@@ -15,10 +15,6 @@ export default async function CoachPlayersPage() {
     include: {
       parent: true,
       metrics: true,
-      metricsHistory: {
-        orderBy: { createdAt: "desc" },
-        take: 25, // enough to detect PRs & trends
-      },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -100,15 +96,6 @@ export default async function CoachPlayersPage() {
                     }
                   : null
               }
-              metricsHistory={p.metricsHistory.map((h) => ({
-                createdAt: h.createdAt,
-                teeExitVelo: h.teeExitVelo ?? null,
-                softTossExitVelo: h.softTossExitVelo ?? null,
-                sixtyTime: h.sixtyTime ?? null,
-                fiveTenFiveTime: h.fiveTenFiveTime ?? null,
-                homeToFirstTime: h.homeToFirstTime ?? null,
-                homeToSecondTime: h.homeToSecondTime ?? null,
-              }))}
             />
           ))}
 

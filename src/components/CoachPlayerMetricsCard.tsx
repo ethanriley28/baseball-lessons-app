@@ -12,16 +12,48 @@ type MetricsSnapshot = {
   updatedAtISO: string | null;
 };
 
+type MetricsHistoryRow = {
+  createdAt: string | Date;
+  teeExitVelo: number | null;
+  softTossExitVelo: number | null;
+  sixtyTime: number | null;
+  fiveTenFiveTime: number | null;
+  homeToFirstTime: number | null;
+  homeToSecondTime: number | null;
+};
+
+function fmtDelta(val: number) {
+  const sign = val > 0 ? "+" : "";
+  return `${sign}${val}`;
+}
+
+function isLowerBetter(field: keyof MetricsSnapshot) {
+  return (
+    field === "sixtyTime" ||
+    field === "fiveTenFiveTime" ||
+    field === "homeToFirstTime" ||
+    field === "homeToSecondTime"
+  );
+}
+
+function toNum(v: any): number | null {
+  if (v === null || v === undefined) return null;
+  const n = typeof v === "number" ? v : parseFloat(String(v));
+  return Number.isFinite(n) ? n : null;
+}
+
 export default function CoachPlayerMetricsCard({
   playerId,
   playerName,
   parentName,
   metrics,
+  metricsHistory = [],
 }: {
   playerId: string;
   playerName: string;
   parentName: string | null;
   metrics: MetricsSnapshot | null;
+  metricsHistory?: MetricsHistoryRow[];
 }) {
   const [saving, setSaving] = useState(false);
 
@@ -45,10 +77,108 @@ export default function CoachPlayerMetricsCard({
     }
   }, [metrics?.updatedAtISO]);
 
+  // --- PR + Trend helpers (low effort, high wow)
+  const trend = useMemo(() => {
+    // newest first
+    const rows = [...(metricsHistory ?? [])].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    const fields: (keyof MetricsSnapshot)[] = [
+      "teeExitVelo",
+      "softTossExitVelo",
+      "sixtyTime",
+      "fiveTenFiveTime",
+      "homeToFirstTime",
+      "homeToSecondTime",
+    ];
+
+    const result: Record<
+      string,
+      { isPR: boolean; deltaVsLast: number | null; betterArrow: "up" | "down" | null }
+    > = {};
+
+    for (const f of fields) {
+      const values = rows
+        .map((r) => toNum((r as any)[f]))
+        .filter((v) => v !== null) as number[];
+
+      const current = toNum((metrics as any)?.[f]);
+      const last = values.length > 1 ? values[1] : null; // previous session
+      const best =
+        values.length === 0
+          ? null
+          : isLowerBetter(f)
+          ? Math.min(...values)
+          : Math.max(...values);
+
+      const isPR =
+        current !== null && best !== null
+          ? isLowerBetter(f)
+            ? current <= best
+            : current >= best
+          : false;
+
+      let deltaVsLast: number | null = null;
+      if (current !== null && last !== null) deltaVsLast = current - last;
+
+      // "betterArrow" indicates performance direction (not math sign):
+      // - for velo, higher is better => up arrow means improved
+      // - for times, lower is better => down arrow means improved
+      let betterArrow: "up" | "down" | null = null;
+      if (deltaVsLast !== null && deltaVsLast !== 0) {
+        if (isLowerBetter(f)) {
+          // improved if negative delta
+          betterArrow = deltaVsLast < 0 ? "down" : "up";
+        } else {
+          // improved if positive delta
+          betterArrow = deltaVsLast > 0 ? "up" : "down";
+        }
+      }
+
+      result[f] = { isPR, deltaVsLast, betterArrow };
+    }
+
+    return result;
+  }, [metricsHistory, metrics]);
+
   function inputBox(label: string, name: keyof typeof form, placeholder: string) {
+    const keyMap: Record<string, keyof MetricsSnapshot> = {
+      teeExitVelo: "teeExitVelo",
+      softTossExitVelo: "softTossExitVelo",
+      sixtyTime: "sixtyTime",
+      fiveTenFiveTime: "fiveTenFiveTime",
+      homeToFirstTime: "homeToFirstTime",
+      homeToSecondTime: "homeToSecondTime",
+    };
+
+    const k = keyMap[name as string];
+    const t = k ? trend[k] : null;
+
+    const showPR = !!t?.isPR;
+    const hasDelta = t?.deltaVsLast !== null && t?.deltaVsLast !== undefined;
+
+    // For times, we want to display delta as "-0.12s" etc.
+    // For velo, "+2 mph" etc. We'll keep raw delta and just show sign.
+    const unit = k && (k === "teeExitVelo" || k === "softTossExitVelo") ? " mph" : " s";
+
     return (
       <div className="field">
-        <div className="label">{label}</div>
+        <div className="labelRow">
+          <div className="label">{label}</div>
+
+          <div className="badges">
+            {showPR ? <span className="pr">PR</span> : null}
+
+            {hasDelta ? (
+              <span className={`delta ${t?.betterArrow === "up" ? "up" : t?.betterArrow === "down" ? "down" : ""}`}>
+                {t?.betterArrow === "up" ? "▲" : t?.betterArrow === "down" ? "▼" : ""}
+                {fmtDelta(Number((t?.deltaVsLast ?? 0).toFixed(2)))}{unit}
+              </span>
+            ) : null}
+          </div>
+        </div>
+
         <input
           value={form[name]}
           onChange={(e) => setForm((p) => ({ ...p, [name]: e.target.value }))}
@@ -83,7 +213,6 @@ export default function CoachPlayerMetricsCard({
         return;
       }
 
-      // simple refresh
       window.location.reload();
     } catch (e) {
       console.error(e);
@@ -114,9 +243,7 @@ export default function CoachPlayerMetricsCard({
         }}
       >
         <div>
-          <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>
-            {playerName}
-          </div>
+          <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>{playerName}</div>
           <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
             Parent: <b>{parentName ?? "—"}</b> · Last updated: <b>{updatedLabel}</b>
           </div>
@@ -180,13 +307,48 @@ export default function CoachPlayerMetricsCard({
         />
       </div>
 
-      {/* MOBILE ONLY OVERRIDES — desktop unchanged */}
       <style jsx>{`
+        .labelRow {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 6px;
+        }
         .label {
           font-size: 12px;
           font-weight: 800;
           color: #111827;
-          margin-bottom: 6px;
+        }
+        .badges {
+          display: inline-flex;
+          gap: 6px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        .pr {
+          font-size: 11px;
+          font-weight: 900;
+          padding: 3px 8px;
+          border-radius: 9999px;
+          background: #111827;
+          color: #fff;
+        }
+        .delta {
+          font-size: 11px;
+          font-weight: 900;
+          padding: 3px 8px;
+          border-radius: 9999px;
+          border: 1px solid #e5e7eb;
+          background: #f9fafb;
+          color: #111827;
+          white-space: nowrap;
+        }
+        .delta.up {
+          border-color: rgba(34, 197, 94, 0.35);
+        }
+        .delta.down {
+          border-color: rgba(239, 68, 68, 0.35);
         }
         .input {
           width: 100%;
@@ -202,20 +364,16 @@ export default function CoachPlayerMetricsCard({
           .card {
             padding: 12px !important;
           }
-
           .topRow {
             flex-direction: column !important;
             align-items: stretch !important;
           }
-
           .saveBtn {
             width: 100% !important;
           }
-
           .grid {
             grid-template-columns: 1fr !important;
           }
-
           .input,
           .textarea {
             font-size: 16px !important; /* mobile zoom fix */
