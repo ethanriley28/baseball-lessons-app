@@ -24,3 +24,206 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* === Mobile optimization for Parent Dashboard === */
+@media (max-width: 640px) {
+  .dashboard-main {
+    padding: 12px;
+  }
+
+  .dashboard-header {
+    margin-bottom: 16px;
+  }
+
+  .dashboard-title {
+    font-size: 20px;
+  }
+
+  .dashboard-nav {
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .players-section,
+  .upcoming-lessons-section,
+  .onboarding-section {
+    padding: 12px;
+    border-radius: 10px;
+  }
+
+  /* Make player cards stack nicely and be full-width on mobile */
+  .players-grid {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .player-card {
+    padding: 12px !important;
+  }
+
+  .player-card ul {
+    font-size: 11px;
+  }
+}
+
+/* === Mobile-first tweaks for home screen === */
+
+.home-main {
+  /* body background already set inline, this keeps layout nice on bigger screens */
+}
+
+.home-card {
+  backdrop-filter: blur(12px);
+}
+
+/* make buttons feel more tappable on phones */
+@media (max-width: 640px) {
+  .home-main {
+    padding: 20px 12px;
+  }
+
+  .home-card {
+    padding: 18px 16px;
+    border-radius: 22px;
+  }
+
+  .home-btn {
+    font-size: 15px;
+    padding-top: 12px !important;
+    padding-bottom: 12px !important;
+  }
+}
+
+/* ===== Player page mobile tabs ===== */
+
+.player-tabs {
+  margin-top: 16px;
+}
+
+/* hide the radio inputs */
+.player-tabs input[type="radio"] {
+  display: none;
+}
+
+/* tab nav bar */
+.player-tabs-nav {
+  display: none; /* desktop: hidden by default, enabled on mobile */
+}
+
+/* base panel styles */
+.player-tabs-panels {
+  margin-top: 12px;
+}
+
+.player-tab-panel {
+  margin-bottom: 16px;
+}
+
+/* --- MOBILE BEHAVIOR --- */
+@media (max-width: 768px) {
+  .player-tabs-nav {
+    display: flex;
+    gap: 8px;
+    padding: 4px;
+    border-radius: 999px;
+    background: #f3f4f6;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+
+  .player-tabs-nav label {
+    flex: 1;
+    text-align: center;
+    padding: 8px 0;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #4b5563;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+  }
+
+  .player-tabs-nav label span {
+    display: inline-block;
+  }
+
+  /* default: hide all panels on mobile */
+  .player-tabs-panels .player-tab-panel {
+    display: none;
+  }
+
+  /* PROFILE selected */
+  #tab-profile:checked ~ .player-tabs-nav label[for="tab-profile"] {
+    background: linear-gradient(90deg, #2563eb, #0ea5e9);
+    color: white;
+    box-shadow: 0 6px 18px rgba(37, 99, 235, 0.25);
+  }
+  #tab-profile:checked ~ .player-tabs-panels .player-tab-panel-profile {
+    display: block;
+  }
+
+  /* METRICS selected */
+  #tab-metrics:checked ~ .player-tabs-nav label[for="tab-metrics"] {
+    background: #111827;
+    color: white;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.25);
+  }
+  #tab-metrics:checked ~ .player-tabs-panels .player-tab-panel-metrics {
+    display: block;
+  }
+
+  /* LESSONS selected */
+  #tab-lessons:checked ~ .player-tabs-nav label[for="tab-lessons"] {
+    background: #f97316;
+    color: white;
+    box-shadow: 0 6px 18px rgba(249, 115, 22, 0.28);
+  }
+  #tab-lessons:checked ~ .player-tabs-panels .player-tab-panel-lessons {
+    display: block;
+  }
+}
+
+/* --- DESKTOP BEHAVIOR --- */
+/* On desktop, show all sections stacked (or your existing layout inside them).
+   Tabs can stay hidden or you can show them by removing display:none above. */
+@media (min-width: 769px) {
+  .player-tabs-panels .player-tab-panel {
+    display: block;
+  }
+}
+
+html, body {
+  height: 100%;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, a {
+  touch-action: manipulation;
+}
+
+@media (max-width: 820px) {
+  .mobile-stack {
+    display: grid !important;
+    gap: 10px !important;
+  }
+
+  .mobile-hide {
+    display: none !important;
+  }
+
+  .mobile-full {
+    width: 100% !important;
+  }
+
+  .mobile-scrollx {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+

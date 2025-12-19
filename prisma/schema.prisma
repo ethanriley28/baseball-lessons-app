@@ -1,0 +1,120 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String?
+  email        String    @unique
+  passwordHash String?
+  role         String    @default("PARENT")
+  players      Player[]  @relation("ParentPlayers")
+  bookings     Booking[] @relation("ParentBookings")
+  createdAt    DateTime  @default(now())
+}
+
+model Player {
+  id       String @id @default(cuid())
+  name     String
+  parentId String
+  parent   User   @relation("ParentPlayers", fields: [parentId], references: [id])
+
+  // PROFILE FIELDS
+  school    String?
+  classYear String? // Freshman / Sophomore / Junior / Senior
+  position  String?
+  bats      String? // Right / Left / Switch
+  throws    String? // 👈 NEW: Throwing arm (Right / Left)
+  height    String?
+  weight    Int?
+  travelOrg String?
+  age       Int?
+  gradYear  Int?
+
+  photoUrl  String?
+  createdAt DateTime @default(now())
+
+  metrics        Metrics?
+  metricsHistory MetricsEntry[]
+  bookings       Booking[]
+
+  playerMetrics PlayerMetric[] // ✅ add this
+}
+
+model Metrics {
+  id               String   @id @default(cuid())
+  player           Player   @relation(fields: [playerId], references: [id])
+  playerId         String   @unique
+  teeExitVelo      Float?
+  softTossExitVelo Float?
+  sixtyTime        Float?
+  fiveTenFiveTime  Float?
+  homeToFirstTime  Float?
+  homeToSecondTime Float?
+  updatedAt        DateTime @updatedAt
+}
+
+model PlayerMetric {
+  id       String @id @default(cuid())
+  playerId String
+  player   Player @relation(fields: [playerId], references: [id])
+
+  date DateTime @default(now())
+
+  teeExitVelo      Float?
+  softTossExitVelo Float?
+  sixtyTime        Float?
+  fiveTenFiveTime  Float?
+  homeToFirstTime  Float?
+  homeToSecondTime Float?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+}
+
+model MetricsEntry {
+  id               String   @id @default(cuid())
+  player           Player   @relation(fields: [playerId], references: [id])
+  playerId         String
+  teeExitVelo      Float?
+  softTossExitVelo Float?
+  sixtyTime        Float?
+  fiveTenFiveTime  Float?
+  homeToFirstTime  Float?
+  homeToSecondTime Float?
+  createdAt        DateTime @default(now())
+}
+
+model Booking {
+  id              String    @id @default(cuid())
+  player          Player    @relation(fields: [playerId], references: [id])
+  playerId        String
+  parent          User      @relation("ParentBookings", fields: [parentId], references: [id])
+  parentId        String
+  start           DateTime
+  end             DateTime
+  status          String    @default("CONFIRMED")
+  durationMinutes Int       @default(60)
+  lessonType      String    @default("Hitting")
+  notes           String? // 👈 new field for session notes
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+  paymentStatus   String    @default("UNPAID") // 👈 ADD THIS
+  paidAt          DateTime?
+  paymentMethod   String? // "Cash", "Venmo", "Cash App", "Apple Pay"
+  photoUrl        String?
+}
+
+model AvailabilityBlock {
+  id        String   @id @default(cuid())
+  start     DateTime
+  end       DateTime
+  createdAt DateTime @default(now())
+}
