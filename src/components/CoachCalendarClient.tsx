@@ -742,11 +742,59 @@ export function CoachCalendarClient({ monthISO, bookings, availability, nowISO }
 
       {/* Add Availability Modal */}
       {showAddModal && addModalDay && (
-        <AddAvailabilityModal
-          open={showAddModal}
-          onClose={() => setShowAddModal(false)}
-          day={addModalDay}
-          onAdded={onAvailabilityAdded}
+  <AddAvailabilityModal
+    open={showAddModal}
+    dateLabel={addModalDay.toLocaleDateString()}
+    onClose={() => setShowAddModal(false)}
+    onSave={async (startTime24: string, endTime24: string) => {
+      // startTime24 and endTime24 are like "15:30"
+      const [sh, sm] = startTime24.split(":").map(Number);
+      const [eh, em] = endTime24.split(":").map(Number);
+
+      const start = new Date(addModalDay);
+      start.setHours(sh, sm, 0, 0);
+
+      const end = new Date(addModalDay);
+      end.setHours(eh, em, 0, 0);
+
+      // basic guard
+      if (end <= start) {
+        alert("End time must be after start time.");
+        return;
+      }
+
+      const res = await fetch("/api/availability/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start: start.toISOString(),
+          end: end.toISOString(),
+        }),
+      });
+
+      if (!res.ok) {
+        alert("Failed to add availability.");
+        return;
+      }
+
+      // update local UI
+      const data = await res.json();
+      // Expecting API returns { block: { id, start, end } } or similar.
+      // If your API returns a different shape, tell me what it returns and I’ll match it.
+      const newBlock = data.block ?? data.availability ?? null;
+
+      if (newBlock?.id && newBlock?.start && newBlock?.end) {
+        setLocalAvailability((prev) => [
+          ...prev,
+          { id: newBlock.id, start: newBlock.start, end: newBlock.end },
+        ]);
+      } else {
+        // fallback: refresh if response shape differs
+        router.refresh();
+      }
+
+      setShowAddModal(false);
+    }}
         />
       )}
     </section>
