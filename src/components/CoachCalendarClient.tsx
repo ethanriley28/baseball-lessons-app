@@ -763,11 +763,24 @@ export function CoachCalendarClient({ monthISO, bookings, availability, nowISO }
         return;
       }
 
-      const res = await fetch("/api/availability/add", {
+      const payload = {
+  dayISO: addModalDay instanceof Date ? addModalDay.toISOString() : new Date(addModalDay).toISOString(),
+  startTime24,
+  endTime24,
+};
+
+const res = await fetch("/api/availability/add", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(payload),
 });
+
+if (!res.ok) {
+  const msg = await res.text().catch(() => "");
+  alert(`Failed to add availability.${msg ? `\n\n${msg}` : ""}`);
+  return;
+}
+
 
 if (!res.ok) {
   const txt = await res.text(); // show server error details
