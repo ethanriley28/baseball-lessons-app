@@ -39,6 +39,21 @@ type Props = {
   nowISO: string; // ✅ from server
 };
 
+function to24h(timeLabel: string) {
+  // Accepts "2:00 PM", "11:15 AM", etc -> "14:00", "11:15"
+  const [time, mer] = timeLabel.trim().split(" ");
+  const [hhStr, mmStr] = time.split(":");
+  let hh = parseInt(hhStr, 10);
+  const mm = parseInt(mmStr, 10);
+
+  const upper = (mer || "").toUpperCase();
+  if (upper === "PM" && hh !== 12) hh += 12;
+  if (upper === "AM" && hh === 12) hh = 0;
+
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
@@ -217,43 +232,23 @@ export function CoachCalendarClient({ monthISO, bookings, availability, nowISO }
   }, [localAvailability]);
 
   async function deleteAvailability(id: string) {
-    const ok = window.confirm("Delete this availability block?");
-    if (!ok) return;
+  const ok = window.confirm("Delete this availability block?");
+  if (!ok) return;
 
-    const startISO = new Date(
-  addModalDay.getFullYear(),
-  addModalDay.getMonth(),
-  addModalDay.getDate(),
-  parseInt(startTime24.split(":")[0], 10),
-  parseInt(startTime24.split(":")[1], 10)
-).toISOString();
+  const res = await fetch("/api/availability/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
 
-const endISO = new Date(
-  addModalDay.getFullYear(),
-  addModalDay.getMonth(),
-  addModalDay.getDate(),
-  parseInt(endTime24.split(":")[0], 10),
-  parseInt(endTime24.split(":")[1], 10)
-).toISOString();
-
-const res = await fetch("/api/availability/add", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    startISO,
-    endISO,
-  }),
-});
-
-    if (!r.ok) {
-      alert("Failed to delete availability.");
-      return;
-    }
-
-    setLocalAvailability((prev) => prev.filter((x) => x.id !== id));
+  if (!res.ok) {
+    alert("Failed to delete availability.");
+    return;
   }
+
+  setLocalAvailability((prev) => prev.filter((x) => x.id !== id));
+}
+
 
   async function handleDropOnDay(bookingId: string, newDay: Date) {
     const ok = window.confirm("Move this lesson to the new day? (Time stays the same)");
@@ -761,75 +756,66 @@ const res = await fetch("/api/availability/add", {
         </div>
       )}
 
-      {/* Add Availability Modal */}
+            {/* Add Availability Modal */}
       {showAddModal && addModalDay && (
-  <AddAvailabilityModal
-    open={showAddModal}
-    dateLabel={addModalDay.toLocaleDateString()}
-    onClose={() => setShowAddModal(false)}
-    onSave={async (startTime24: string, endTime24: string) => {
-      // startTime24 and endTime24 are like "15:30"
-      const [sh, sm] = startTime24.split(":").map(Number);
-      const [eh, em] = endTime24.split(":").map(Number);
+        <AddAvailabilityModal
+          open={showAddModal}
+          dateLabel={addModalDay.toLocaleDateString()}
+          onClose={() => setShowAddModal(false)}
+          onSave={async (startTime24: string, endTime24: string) => {
+            // ✅ Safety: addModalDay is guaranteed non-null here because of the guard above
 
-      const start = new Date(addModalDay);
-      start.setHours(sh, sm, 0, 0);
+            // Parse "HH:MM"
+            const [sh, sm] = startTime24.split(":").map((n) => parseInt(n, 10));
+            const [eh, em] = endTime24.split(":").map((n) => parseInt(n, 10));
 
-      const end = new Date(addModalDay);
-      end.setHours(eh, em, 0, 0);
+            const start = new Date(addModalDay);
+            start.setHours(sh, sm, 0, 0);
 
-      // basic guard
-      if (end <= start) {
-        alert("End time must be after start time.");
-        return;
-      }
+            const end = new Date(addModalDay);
+            end.setHours(eh, em, 0, 0);
 
-      const payload = {
-  dayISO: addModalDay instanceof Date ? addModalDay.toISOString() : new Date(addModalDay).toISOString(),
-  startTime24,
-  endTime24,
-};
+            if (end <= start) {
+              alert("End time must be after start time.");
+              return;
+            }
 
-const res = await fetch("/api/availability/add", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(payload),
-});
+            const payload = {
+              dayISO: addModalDay.toISOString(),
+              startTime24,
+              endTime24,
+            };
 
-if (!res.ok) {
-  const msg = await res.text().catch(() => "");
-  alert(`Failed to add availability.${msg ? `\n\n${msg}` : ""}`);
-  return;
-}
+            const res = await fetch("/api/availability/add", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
 
+            if (!res.ok) {
+              const txt = await res.text().catch(() => "");
+              alert(`Failed to add availability.${txt ? `\n\n${txt}` : ""}`);
+              return;
+            }
 
-if (!res.ok) {
-  const txt = await res.text(); // show server error details
-  alert(`Failed to add availability:\n${txt}`);
-  return;
-}
+            // Try to update UI without full refresh
+            try {
+              const data = await res.json();
+              const newBlock = data?.block ?? data?.availability ?? null;
 
+              if (newBlock?.id && newBlock?.start && newBlock?.end) {
+                setLocalAvailability((prev) => [
+                  ...prev,
+                  { id: newBlock.id, start: newBlock.start, end: newBlock.end },
+                ]);
+              } else {
+                router.refresh();
+              }
+            } catch {
+              router.refresh();
+            }
 
-      // update local UI
-      const data = await res.json();
-      // Expecting API returns { block: { id, start, end } } or similar.
-      // If your API returns a different shape, tell me what it returns and I’ll match it.
-      const newBlock = data.block ?? data.availability ?? null;
-
-      if (newBlock?.id && newBlock?.start && newBlock?.end) {
-        setLocalAvailability((prev) => [
-          ...prev,
-          { id: newBlock.id, start: newBlock.start, end: newBlock.end },
-        ]);
-      } else {
-        // fallback: refresh if response shape differs
-        router.refresh();
-      }
-
-      setShowAddModal(false);
-    }}
+            setShowAddModal(false);
+          }}
         />
       )}
-    </section>
-  );
-}
