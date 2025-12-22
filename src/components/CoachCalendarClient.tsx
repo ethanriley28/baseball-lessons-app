@@ -732,7 +732,7 @@ export function CoachCalendarClient({ monthISO, bookings, availability, nowISO }
         </div>
       )}
 
-      {/* Tooltip */}
+            {/* Tooltip */}
       {tooltip.show && (
         <div
           style={{
@@ -756,66 +756,64 @@ export function CoachCalendarClient({ monthISO, bookings, availability, nowISO }
         </div>
       )}
 
-            {/* Add Availability Modal */}
+      {/* Add Availability Modal */}
       {showAddModal && addModalDay && (
         <AddAvailabilityModal
-          open={showAddModal}
-          dateLabel={addModalDay.toLocaleDateString()}
-          onClose={() => setShowAddModal(false)}
-          onSave={async (startTime24: string, endTime24: string) => {
-            // ✅ Safety: addModalDay is guaranteed non-null here because of the guard above
+    open={showAddModal}
+    dateLabel={addModalDay.toLocaleDateString()}
+    onClose={() => setShowAddModal(false)}
+    onSave={async (startTime24: string, endTime24: string) => {
+      try {
+        // startTime24 and endTime24 are like "15:30"
+        const [sh, sm] = startTime24.split(":").map(Number);
+        const [eh, em] = endTime24.split(":").map(Number);
 
-            // Parse "HH:MM"
-            const [sh, sm] = startTime24.split(":").map((n) => parseInt(n, 10));
-            const [eh, em] = endTime24.split(":").map((n) => parseInt(n, 10));
+        const start = new Date(addModalDay);
+        start.setHours(sh, sm, 0, 0);
 
-            const start = new Date(addModalDay);
-            start.setHours(sh, sm, 0, 0);
+        const end = new Date(addModalDay);
+        end.setHours(eh, em, 0, 0);
 
-            const end = new Date(addModalDay);
-            end.setHours(eh, em, 0, 0);
+        if (end <= start) {
+          alert("End time must be after start time.");
+          return;
+        }
 
-            if (end <= start) {
-              alert("End time must be after start time.");
-              return;
-            }
+        const payload = {
+          dayISO: addModalDay.toISOString(),
+          startTime24,
+          endTime24,
+        };
 
-            const payload = {
-              dayISO: addModalDay.toISOString(),
-              startTime24,
-              endTime24,
-            };
+        const res = await fetch("/api/availability/add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
 
-            const res = await fetch("/api/availability/add", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            });
+        if (!res.ok) {
+          const msg = await res.text().catch(() => "");
+          alert(`Failed to add availability.${msg ? `\n\n${msg}` : ""}`);
+          return;
+        }
 
-            if (!res.ok) {
-              const txt = await res.text().catch(() => "");
-              alert(`Failed to add availability.${txt ? `\n\n${txt}` : ""}`);
-              return;
-            }
+        const data = await res.json();
+        const newBlock = data.block ?? data.availability ?? null;
 
-            // Try to update UI without full refresh
-            try {
-              const data = await res.json();
-              const newBlock = data?.block ?? data?.availability ?? null;
+        if (newBlock?.id && newBlock?.start && newBlock?.end) {
+          setLocalAvailability((prev) => [
+            ...prev,
+            { id: newBlock.id, start: newBlock.start, end: newBlock.end },
+          ]);
+        } else {
+          router.refresh();
+        }
 
-              if (newBlock?.id && newBlock?.start && newBlock?.end) {
-                setLocalAvailability((prev) => [
-                  ...prev,
-                  { id: newBlock.id, start: newBlock.start, end: newBlock.end },
-                ]);
-              } else {
-                router.refresh();
-              }
-            } catch {
-              router.refresh();
-            }
-
-            setShowAddModal(false);
-          }}
-        />
-      )}
+        setShowAddModal(false);
+      } catch (e) {
+        console.error(e);
+        alert("Network error adding availability.");
+      }
+    }}
+  />
+)}
