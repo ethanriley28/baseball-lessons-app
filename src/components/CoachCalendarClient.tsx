@@ -764,51 +764,54 @@ export function CoachCalendarClient({ monthISO, bookings, availability, nowISO }
           onClose={() => setShowAddModal(false)}
           onSave={async (startTime24: string, endTime24: string) => {
             try {
-              const [sh, sm] = startTime24.split(":").map(Number);
-              const [eh, em] = endTime24.split(":").map(Number);
+              // startTime24 and endTime24 are like "15:30"
+const [sh, sm] = startTime24.split(":").map(Number);
+const [eh, em] = endTime24.split(":").map(Number);
 
-              const start = new Date(addModalDay);
-              start.setHours(sh, sm, 0, 0);
+const start = new Date(addModalDay);
+start.setHours(sh, sm, 0, 0);
 
-              const end = new Date(addModalDay);
-              end.setHours(eh, em, 0, 0);
+const end = new Date(addModalDay);
+end.setHours(eh, em, 0, 0);
 
-              if (end <= start) {
-                alert("End time must be after start time.");
-                return;
-              }
+// basic guard
+if (end <= start) {
+  alert("End time must be after start time.");
+  return;
+}
 
-              const payload = {
-                dayISO: addModalDay.toISOString(),
-                startTime24,
-                endTime24,
-              };
+// ✅ API expects these keys:
+const payload = {
+  startISO: start.toISOString(),
+  endISO: end.toISOString(),
+};
 
-              const res = await fetch("/api/availability/add", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-              });
+const res = await fetch("/api/availability/add", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(payload),
+});
 
-              if (!res.ok) {
-                const msg = await res.text().catch(() => "");
-                alert(`Failed to add availability.${msg ? `\n\n${msg}` : ""}`);
-                return;
-              }
+if (!res.ok) {
+  const msg = await res.text().catch(() => "");
+  alert(`Failed to add availability.${msg ? `\n\n${msg}` : ""}`);
+  return;
+}
 
-              const data = await res.json();
-              const newBlock = data.block ?? data.availability ?? null;
+const data = await res.json();
+const newBlock = data.block ?? data.availability ?? null;
 
-              if (newBlock?.id && newBlock?.start && newBlock?.end) {
-                setLocalAvailability((prev) => [
-                  ...prev,
-                  { id: newBlock.id, start: newBlock.start, end: newBlock.end },
-                ]);
-              } else {
-                router.refresh();
-              }
+if (newBlock?.id && newBlock?.start && newBlock?.end) {
+  setLocalAvailability((prev) => [
+    ...prev,
+    { id: newBlock.id, start: newBlock.start, end: newBlock.end },
+  ]);
+} else {
+  router.refresh();
+}
 
-              setShowAddModal(false);
+setShowAddModal(false);
+
             } catch (e) {
               console.error(e);
               alert("Network error adding availability.");
