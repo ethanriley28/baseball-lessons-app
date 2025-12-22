@@ -220,11 +220,32 @@ export function CoachCalendarClient({ monthISO, bookings, availability, nowISO }
     const ok = window.confirm("Delete this availability block?");
     if (!ok) return;
 
-    const r = await fetch("/api/availability/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
+    const startISO = new Date(
+  addModalDay.getFullYear(),
+  addModalDay.getMonth(),
+  addModalDay.getDate(),
+  parseInt(startTime24.split(":")[0], 10),
+  parseInt(startTime24.split(":")[1], 10)
+).toISOString();
+
+const endISO = new Date(
+  addModalDay.getFullYear(),
+  addModalDay.getMonth(),
+  addModalDay.getDate(),
+  parseInt(endTime24.split(":")[0], 10),
+  parseInt(endTime24.split(":")[1], 10)
+).toISOString();
+
+const res = await fetch("/api/availability/add", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    startISO,
+    endISO,
+  }),
+});
 
     if (!r.ok) {
       alert("Failed to delete availability.");
