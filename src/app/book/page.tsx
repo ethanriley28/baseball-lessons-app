@@ -137,13 +137,10 @@ function generateSlots(
         slots.push({
           id: slotStart.toISOString(),
           dateKey: localDateKey(slotStart),
-          labelDate: slotStart.toLocaleDateString(undefined, {
-  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-}),
-labelTime: slotStart.toLocaleTimeString(undefined, {
+          labelDate: slotStart.toLocaleDateString(),
+labelTime: slotStart.toLocaleTimeString([], {
   hour: "numeric",
   minute: "2-digit",
-  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 }),
 
           startISO: slotStart.toISOString(),
