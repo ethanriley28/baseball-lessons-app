@@ -12,6 +12,17 @@ type Slot = {
   labelTime: string;
   startISO: string;
 };
+function formatLocalTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatLocalDate(iso: string) {
+  return new Date(iso).toLocaleDateString();
+}
+
 function ConfirmButton({ canConfirm }: { canConfirm: boolean }) {
   const { pending } = useFormStatus();
 
