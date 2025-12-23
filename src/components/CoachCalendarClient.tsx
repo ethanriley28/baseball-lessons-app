@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ⚠️ SCHEDULING LOGIC – LOCKED (v1)
+ * This file is timezone-safe and synced with booking logic.
+ * Do not modify without creating a new branch.
+ */
+
+
 import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import BookingNotesEditor from "@/components/BookingNotesEditor";

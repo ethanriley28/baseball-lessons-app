@@ -1,3 +1,10 @@
+/**
+ * ⚠️ SCHEDULING LOGIC – LOCKED (v1)
+ * This file is timezone-safe and synced with booking logic.
+ * Do not modify without creating a new branch.
+ */
+
+
 "use client";
 
 import React, { useMemo, useState, useRef, useEffect } from "react";

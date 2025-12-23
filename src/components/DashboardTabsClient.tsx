@@ -113,12 +113,114 @@ useEffect(() => {
     return [...props.upcomingBookings].sort(
       (a, b) => new Date(a.startISO).getTime() - new Date(b.startISO).getTime()
     );
+  
   }, [props.upcomingBookings]);
+    const nextLesson = upcoming.find((b) => new Date(b.startISO).getTime() >= Date.now()) ?? null;
+
+  const nextLessonLabel = nextLesson
+    ? `${fmtDT(nextLesson.startISO)} · ${nextLesson.player?.name ?? "Player"}`
+    : "No upcoming lessons";
 
   return (
     <main style={{ minHeight: "100vh", background: "#f6f7fb", padding: 24 }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         {/* Header */}
+                {/* ✅ Summary + Quick Actions */}
+        <section
+          className="dashSummary"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "2fr 1fr 1fr",
+            gap: 12,
+            marginBottom: 14,
+          }}
+        >
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              background: "#fff",
+              borderRadius: 18,
+              padding: 14,
+              boxShadow: "0 16px 40px rgba(15,23,42,0.08)",
+            }}
+          >
+            <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 900 }}>
+              Next Lesson
+            </div>
+            <div style={{ marginTop: 6, fontSize: 14, fontWeight: 900, color: "#111827" }}>
+              {nextLessonLabel}
+            </div>
+
+            <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => setTab("upcoming")}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  background: "#fff",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                View Upcoming
+              </button>
+
+              <Link
+                href="/book"
+                style={{
+                  textDecoration: "none",
+                  background: "linear-gradient(135deg,#2563eb,#0ea5e9)",
+                  color: "#fff",
+                  fontWeight: 900,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  boxShadow: "0 14px 26px rgba(37,99,235,0.18)",
+                  display: "inline-block",
+                }}
+              >
+                Book a Lesson
+              </Link>
+            </div>
+          </div>
+
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              background: "#fff",
+              borderRadius: 18,
+              padding: 14,
+              boxShadow: "0 16px 40px rgba(15,23,42,0.08)",
+            }}
+          >
+            <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 900 }}>Players</div>
+            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 900, color: "#111827" }}>
+              {props.players.length}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280", fontWeight: 800 }}>
+              Tap Players to view
+            </div>
+          </div>
+
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              background: "#fff",
+              borderRadius: 18,
+              padding: 14,
+              boxShadow: "0 16px 40px rgba(15,23,42,0.08)",
+            }}
+          >
+            <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 900 }}>Upcoming</div>
+            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 900, color: "#111827" }}>
+              {upcoming.length}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280", fontWeight: 800 }}>
+              Scheduled lessons
+            </div>
+          </div>
+        </section>
         <div
           style={{
             display: "flex",
@@ -678,8 +780,13 @@ useEffect(() => {
           }
         }
       `}</style>
-
-
+            <style>{`
+        @media (max-width: 820px) {
+          .dashSummary {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </main>
   );
 }
