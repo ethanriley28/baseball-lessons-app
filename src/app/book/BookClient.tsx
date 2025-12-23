@@ -2,6 +2,8 @@
 
 import React, { useMemo, useState, useRef, useEffect } from "react";
 import { useFormStatus } from "react-dom";
+import { fmtTime, fmtTimeRange, fmtDate } from "@/lib/time";
+
 
 
 
@@ -227,12 +229,31 @@ useEffect(() => {
             }}
           >
             <div style={{ fontWeight: 900, fontSize: 12, marginBottom: 8 }}>
-              {daySlots[0]?.labelDate}
+              {daySlots[0]?.startISO ? fmtDate(daySlots[0].startISO) : ""}
             </div>
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
               {daySlots.map((slot) => {
                 const isSelected = selectedStart === slot.startISO;
+
+                const DISPLAY_TZ = "America/Chicago";
+
+const fmtDate = (iso: string) =>
+  new Intl.DateTimeFormat("en-US", {
+    timeZone: DISPLAY_TZ,
+    month: "numeric",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(iso));
+
+const fmtTime = (iso: string) =>
+  new Intl.DateTimeFormat("en-US", {
+    timeZone: DISPLAY_TZ,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(iso));
+
 
                 return (
                   <button
@@ -254,7 +275,7 @@ useEffect(() => {
                       opacity: selectedPlayerId ? 1 : 0.45,
                     }}
                   >
-                    {slot.labelTime}
+                    {fmtTime(slot.startISO)}
                   </button>
                 );
               })}

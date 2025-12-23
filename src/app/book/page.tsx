@@ -154,6 +154,41 @@ labelTime: slotStart.toLocaleTimeString([], {
   return slots.sort((a, b) => a.startISO.localeCompare(b.startISO));
 }
 
+const DISPLAY_TZ = "America/Chicago";
+
+function formatTimeCST(d: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: DISPLAY_TZ,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(d);
+}
+
+function formatDateKeyCST(d: Date) {
+  // YYYY-MM-DD in CST (for grouping)
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: DISPLAY_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+
+  const y = parts.find((p) => p.type === "year")?.value;
+  const m = parts.find((p) => p.type === "month")?.value;
+  const day = parts.find((p) => p.type === "day")?.value;
+  return `${y}-${m}-${day}`;
+}
+
+function formatDateLabelCST(d: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: DISPLAY_TZ,
+    month: "numeric",
+    day: "numeric",
+    year: "numeric",
+  }).format(d);
+}
+
+
 // ---------------- server action ----------------
 
 async function createBooking(formData: FormData) {
