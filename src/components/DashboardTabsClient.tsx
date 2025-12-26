@@ -570,10 +570,62 @@ export default function DashboardTabsClient(props: {
               >
                 Book again
               </Link>
+              {isUpcoming && !isCompleted && (
+  <>
+    <button
+      type="button"
+      onClick={async () => {
+        if (!confirm("Cancel this lesson?")) return;
+
+        const res = await fetch("/api/booking/cancel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bookingId: b.id }),
+        });
+
+        if (!res.ok) {
+          alert("Failed to cancel lesson.");
+          return;
+        }
+
+        location.reload();
+      }}
+      style={{
+        padding: "8px 12px",
+        borderRadius: 12,
+        border: "1px solid #ef4444",
+        background: "#fff",
+        color: "#ef4444",
+        fontWeight: 900,
+        cursor: "pointer",
+      }}
+    >
+      Cancel
+    </button>
+
+    <Link
+      href={`/book?reschedule=${b.id}`}
+      style={{
+        padding: "8px 12px",
+        borderRadius: 12,
+        border: "1px solid #2563eb",
+        background: "#fff",
+        color: "#2563eb",
+        fontWeight: 900,
+        textDecoration: "none",
+        display: "inline-block",
+      }}
+    >
+      Reschedule
+    </Link>
+  </>
+)}
+
             </div>
           </div>
         );
       })}
+      
 
       {bookingsFiltered.length === 0 ? (
         <div style={{ fontSize: 14, color: "#6b7280" }}>
@@ -583,6 +635,7 @@ export default function DashboardTabsClient(props: {
     </div>
   </section>
 )}
+
 
 
         {/* ACCOUNT */}
