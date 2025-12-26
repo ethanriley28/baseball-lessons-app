@@ -4,7 +4,6 @@ import DashboardTabsClient from "@/components/DashboardTabsClient";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
-
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
@@ -21,7 +20,7 @@ export default async function DashboardPage() {
   if (!dbUser) redirect("/login");
   if (dbUser.role !== "PARENT") redirect("/coach");
 
-  // ✅ STEP 3: Auto-mark past lessons as completed
+  // ✅ Auto-mark past lessons as completed
   const now = new Date();
   await prisma.booking.updateMany({
     where: {
@@ -39,17 +38,18 @@ export default async function DashboardPage() {
     include: { metrics: true },
   });
 
-// 🔁 NEW PARENT → force Add Player onboarding
-if (players.length === 0) {
-  redirect("/onboarding");
-}
+  // 🔁 NEW PARENT → force Add Player onboarding
+  if (players.length === 0) {
+    redirect("/onboarding");
+  }
 
-const upcomingBookings = await prisma.booking.findMany({
-  where: { parentId: dbUser.id },
-  orderBy: { start: "asc" },
-  take: 50,
-  include: { player: { select: { id: true, name: true } } },
-});
+  const upcomingBookings = await prisma.booking.findMany({
+    where: { parentId: dbUser.id },
+    orderBy: { start: "asc" },
+    take: 75,
+    include: { player: { select: { id: true, name: true } } },
+  });
+
   return (
     <DashboardTabsClient
       parentName={dbUser.name ?? "Parent"}
@@ -57,13 +57,15 @@ const upcomingBookings = await prisma.booking.findMany({
       upcomingBookings={upcomingBookings.map((b) => ({
         id: b.id,
         startISO: b.start.toISOString(),
+        endISO: b.end.toISOString(),
         lessonType: (b as any).lessonType ?? null,
         durationMinutes: (b as any).durationMinutes ?? null,
         notes: (b as any).notes ?? null,
+        completedAtISO: b.completedAt ? b.completedAt.toISOString() : null,
+        paidAtISO: b.paidAt ? b.paidAt.toISOString() : null,
+        paymentMethod: b.paymentMethod ?? null,
         player: { id: b.player.id, name: b.player.name },
       }))}
     />
   );
 }
-
-
