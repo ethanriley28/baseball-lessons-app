@@ -96,34 +96,36 @@ function MetricMini({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Badge({ children, tone }: { children: React.ReactNode; tone: "green" | "red" | "gray" | "blue" }) {
-  const colors: Record<string, { bg: string; border: string; text: string }> = {
-    green: { bg: "#ecfdf5", border: "#a7f3d0", text: "#065f46" },
-    red: { bg: "#fef2f2", border: "#fecaca", text: "#991b1b" },
-    gray: { bg: "#f9fafb", border: "#e5e7eb", text: "#374151" },
-    blue: { bg: "#eff6ff", border: "#bfdbfe", text: "#1d4ed8" },
+function Badge({ tone, children }: { tone: "green" | "red" | "blue" | "gray"; children: React.ReactNode }) {
+  const map: Record<string, { bg: string; fg: string; bd: string }> = {
+    green: { bg: "#ecfdf5", fg: "#065f46", bd: "#a7f3d0" },
+    red: { bg: "#fef2f2", fg: "#991b1b", bd: "#fecaca" },
+    blue: { bg: "#eff6ff", fg: "#1d4ed8", bd: "#bfdbfe" },
+    gray: { bg: "#f3f4f6", fg: "#374151", bd: "#e5e7eb" },
   };
+  const c = map[tone] ?? map.gray;
 
-  const c = colors[tone];
   return (
     <span
       style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "6px 10px",
-        borderRadius: 999,
         fontSize: 12,
         fontWeight: 900,
+        padding: "6px 10px",
+        borderRadius: 9999,
         background: c.bg,
-        color: c.text,
-        border: `1px solid ${c.border}`,
-        whiteSpace: "nowrap",
+        color: c.fg,
+        border: `1px solid ${c.bd}`,
+        lineHeight: 1,
+        display: "inline-flex",
+        alignItems: "center",
       }}
     >
       {children}
     </span>
   );
 }
+
+
 
 export default function DashboardTabsClient(props: {
   parentName: string;
@@ -149,15 +151,20 @@ export default function DashboardTabsClient(props: {
   const [bookingView, setBookingView] = useState<"UPCOMING" | "COMPLETED" | "ALL">("UPCOMING");
 
   const bookingsFiltered = useMemo(() => {
-    if (bookingView === "ALL") return bookingsSorted;
+  const all = [...props.upcomingBookings].sort(
+    (a, b) => new Date(a.startISO).getTime() - new Date(b.startISO).getTime()
+  );
 
-    if (bookingView === "COMPLETED") {
-      return bookingsSorted.filter((b) => Boolean(b.completedAtISO));
-    }
+  if (bookingView === "ALL") return all;
 
-    // UPCOMING
-    return bookingsSorted.filter((b) => new Date(b.endISO).getTime() >= nowMs);
-  }, [bookingsSorted, bookingView, nowMs]);
+  if (bookingView === "COMPLETED") {
+    return all.filter((b: any) => Boolean((b as any).completedAtISO));
+  }
+
+  // UPCOMING
+  return all.filter((b: any) => !Boolean((b as any).completedAtISO));
+}, [props.upcomingBookings, bookingView]);
+
 
   return (
     <main style={{ minHeight: "100vh", background: "#f6f7fb", padding: 24 }}>
