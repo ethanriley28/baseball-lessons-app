@@ -337,82 +337,246 @@ export default function DashboardTabsClient(props: {
           </section>
         )}
 
-        {/* UPCOMING / HISTORY */}
-        {tab === "upcoming" && (
-          <section style={cardStyle()}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 900 }}>Lessons</div>
-                <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
-                  View upcoming lessons, completed lessons, and payment status.
-                </div>
+       {/* UPCOMING / HISTORY */}
+{tab === "upcoming" && (
+  <section style={cardStyle()}>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div>
+        <div style={{ fontSize: 18, fontWeight: 900 }}>Lessons</div>
+        <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
+          View upcoming lessons, completed lessons, and payment status.
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button style={pillStyle(bookingView === "UPCOMING")} onClick={() => setBookingView("UPCOMING")}>
+          Upcoming
+        </button>
+        <button style={pillStyle(bookingView === "COMPLETED")} onClick={() => setBookingView("COMPLETED")}>
+          Completed
+        </button>
+        <button style={pillStyle(bookingView === "ALL")} onClick={() => setBookingView("ALL")}>
+          All
+        </button>
+      </div>
+    </div>
+
+    {/* helpers (client-side) */}
+    {(() => {
+      function pad2(n: number) {
+        return String(n).padStart(2, "0");
+      }
+
+      function toICSDate(d: Date) {
+        // YYYYMMDDTHHMMSSZ
+        return (
+          d.getUTCFullYear() +
+          pad2(d.getUTCMonth() + 1) +
+          pad2(d.getUTCDate()) +
+          "T" +
+          pad2(d.getUTCHours()) +
+          pad2(d.getUTCMinutes()) +
+          pad2(d.getUTCSeconds()) +
+          "Z"
+        );
+      }
+
+      function downloadICS(opts: { title: string; startISO: string; endISO: string; description?: string }) {
+        const start = new Date(opts.startISO);
+        const end = new Date(opts.endISO);
+
+        const uid = `${Date.now()}-${Math.random().toString(16).slice(2)}@ethanrileytraining`;
+        const dtstamp = toICSDate(new Date());
+
+        const lines = [
+          "BEGIN:VCALENDAR",
+          "VERSION:2.0",
+          "PRODID:-//EthanRileyTraining//EN",
+          "CALSCALE:GREGORIAN",
+          "METHOD:PUBLISH",
+          "BEGIN:VEVENT",
+          `UID:${uid}`,
+          `DTSTAMP:${dtstamp}`,
+          `DTSTART:${toICSDate(start)}`,
+          `DTEND:${toICSDate(end)}`,
+          `SUMMARY:${(opts.title || "Lesson").replace(/\n/g, " ")}`,
+          `DESCRIPTION:${(opts.description || "").replace(/\n/g, " ")}`,
+          "END:VEVENT",
+          "END:VCALENDAR",
+        ];
+
+        const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "lesson.ics";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+
+      async function copyText(text: string) {
+        try {
+          await navigator.clipboard.writeText(text);
+          alert("Copied!");
+        } catch {
+          // fallback
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          ta.remove();
+          alert("Copied!");
+        }
+      }
+
+      return null;
+    })()}
+
+    <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+      {bookingsFiltered.map((b) => {
+        const isCompleted = Boolean(b.completedAtISO);
+        const isPaid = Boolean(b.paidAtISO);
+
+        const isUpcoming = (() => {
+          try {
+            return new Date(b.startISO).getTime() > Date.now();
+          } catch {
+            return false;
+          }
+        })();
+
+        const title = `${b.player.name} · ${b.lessonType ?? "Lesson"}`;
+        const details = `${title}\n${fmtDT(b.startISO)} → ${fmtDT(b.endISO)}${b.durationMinutes ? ` (${b.durationMinutes} min)` : ""}`;
+
+        return (
+          <div
+            key={b.id}
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 16,
+              padding: 14,
+              background: "#fff",
+              boxShadow: "0 10px 24px rgba(15,23,42,0.05)",
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 900, color: "#111827" }}>
+                {b.player.name} · {b.lessonType ?? "Lesson"}
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button style={pillStyle(bookingView === "UPCOMING")} onClick={() => setBookingView("UPCOMING")}>
-                  Upcoming
-                </button>
-                <button style={pillStyle(bookingView === "COMPLETED")} onClick={() => setBookingView("COMPLETED")}>
-                  Completed
-                </button>
-                <button style={pillStyle(bookingView === "ALL")} onClick={() => setBookingView("ALL")}>
-                  All
-                </button>
+                <Badge tone={isCompleted ? "green" : "blue"}>{isCompleted ? "Completed" : "Scheduled"}</Badge>
+                <Badge tone={isPaid ? "green" : "red"}>{isPaid ? "Paid" : "Unpaid"}</Badge>
+                {b.paymentMethod ? <Badge tone="gray">{b.paymentMethod}</Badge> : null}
               </div>
             </div>
 
-            <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-              {bookingsFiltered.map((b) => {
-                const isCompleted = Boolean(b.completedAtISO);
-                const isPaid = Boolean(b.paidAtISO);
-
-                return (
-                  <div
-                    key={b.id}
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 16,
-                      padding: 14,
-                      background: "#fff",
-                      boxShadow: "0 10px 24px rgba(15,23,42,0.05)",
-                      display: "grid",
-                      gap: 8,
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                      <div style={{ fontWeight: 900, color: "#111827" }}>
-                        {b.player.name} · {b.lessonType ?? "Lesson"}
-                      </div>
-
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <Badge tone={isCompleted ? "green" : "blue"}>{isCompleted ? "Completed" : "Scheduled"}</Badge>
-                        <Badge tone={isPaid ? "green" : "red"}>{isPaid ? "Paid" : "Unpaid"}</Badge>
-                        {b.paymentMethod ? <Badge tone="gray">{b.paymentMethod}</Badge> : null}
-                      </div>
-                    </div>
-
-                    <div style={{ fontSize: 13, color: "#374151" }}>
-                      <b>{fmtDT(b.startISO)}</b> → {fmtDT(b.endISO)}
-                      {b.durationMinutes ? ` · ${b.durationMinutes} min` : null}
-                    </div>
-
-                    {b.notes ? (
-                      <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.35 }}>
-                        <b>Notes:</b> {b.notes}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-
-              {bookingsFiltered.length === 0 ? (
-                <div style={{ fontSize: 14, color: "#6b7280" }}>
-                  No lessons found for this view.
-                </div>
-              ) : null}
+            <div style={{ fontSize: 13, color: "#374151" }}>
+              <b>{fmtDT(b.startISO)}</b> → {fmtDT(b.endISO)}
+              {b.durationMinutes ? ` · ${b.durationMinutes} min` : null}
             </div>
-          </section>
-        )}
+
+            {b.notes ? (
+              <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.35 }}>
+                <b>Notes:</b> {b.notes}
+              </div>
+            ) : null}
+
+            {/* Actions (mainly for UPCOMING) */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  // @ts-ignore (helpers are in the same component scope at runtime)
+                  downloadICS({
+                    title,
+                    startISO: b.startISO,
+                    endISO: b.endISO,
+                    description: b.notes ? `Notes: ${b.notes}` : "",
+                  });
+                }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  background: "#fff",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Add to Calendar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  // @ts-ignore
+                  copyText(details);
+                }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  background: "#fff",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Copy details
+              </button>
+
+              <Link
+                href={`/player?id=${b.player.id}`}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  background: "#fff",
+                  fontWeight: 900,
+                  textDecoration: "none",
+                  color: "#111827",
+                  display: "inline-block",
+                }}
+              >
+                View Player
+              </Link>
+
+              <Link
+                href="/book"
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #111827",
+                  background: isUpcoming ? "#111827" : "#fff",
+                  color: isUpcoming ? "#fff" : "#111827",
+                  fontWeight: 900,
+                  textDecoration: "none",
+                  display: "inline-block",
+                }}
+              >
+                Book again
+              </Link>
+            </div>
+          </div>
+        );
+      })}
+
+      {bookingsFiltered.length === 0 ? (
+        <div style={{ fontSize: 14, color: "#6b7280" }}>
+          No lessons found for this view.
+        </div>
+      ) : null}
+    </div>
+  </section>
+)}
+
 
         {/* ACCOUNT */}
         {tab === "account" && (
