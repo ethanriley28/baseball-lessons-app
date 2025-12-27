@@ -425,30 +425,36 @@ export default function DashboardTabsClient(props: {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
 
-      async function cancelBooking(bookingId: string) {
-  const yes = confirm("Cancel this lesson? This cannot be undone.");
-  if (!yes) return;
+       async function cancelLesson(bookingId: string) {
+  const ok = confirm("Cancel this lesson? This cannot be undone.");
+  if (!ok) return;
 
   try {
-    const res = await fetch("/api/bookings/cancel", {
+    const res = await fetch("/api/booking/cancel", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bookingId }),
     });
 
     if (!res.ok) {
-      const msg = await res.text().catch(() => "");
-      alert(`Cancel failed.${msg ? `\n\n${msg}` : ""}`);
+      const txt = await res.text().catch(() => "");
+      alert(`Failed to cancel lesson.\n\n${txt || "Unknown error"}`);
       return;
     }
 
-    // easiest + safest refresh
+    // ✅ easiest refresh
     window.location.reload();
   } catch (e) {
     console.error(e);
-    alert("Network error cancelling lesson.");
+    alert("Failed to cancel lesson (network error).");
   }
 }
+
+function rescheduleUrl(playerId: string) {
+  // sends them to booking page with the player pre-selected (you can use this param)
+  return `/book?playerId=${encodeURIComponent(playerId)}`;
+}
+
 
 
       async function copyText(text: string) {
