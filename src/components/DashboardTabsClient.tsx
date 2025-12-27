@@ -425,6 +425,32 @@ export default function DashboardTabsClient(props: {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
 
+      async function cancelBooking(bookingId: string) {
+  const yes = confirm("Cancel this lesson? This cannot be undone.");
+  if (!yes) return;
+
+  try {
+    const res = await fetch("/api/bookings/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bookingId }),
+    });
+
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      alert(`Cancel failed.${msg ? `\n\n${msg}` : ""}`);
+      return;
+    }
+
+    // easiest + safest refresh
+    window.location.reload();
+  } catch (e) {
+    console.error(e);
+    alert("Network error cancelling lesson.");
+  }
+}
+
+
       async function copyText(text: string) {
         try {
           await navigator.clipboard.writeText(text);
