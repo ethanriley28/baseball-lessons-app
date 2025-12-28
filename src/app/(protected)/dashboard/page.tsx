@@ -3,8 +3,6 @@ import { prisma } from "@/lib/prisma";
 import DashboardTabsClient from "@/components/DashboardTabsClient";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { useRouter } from "next/navigation";
-const router = useRouter();
 
 
 export default async function DashboardPage() {
