@@ -4,30 +4,11 @@ import DashboardTabsClient from "@/components/DashboardTabsClient";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
-
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
 
   const user = session.user as { id: string; role?: string; name?: string | null };
-
-  async function cancelLesson(bookingId: string) {
-  if (!confirm("Cancel this lesson?")) return;
-
-  const res = await fetch("/api/bookings/cancel", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ bookingId }),
-  });
-
-  if (!res.ok) {
-    alert("Failed to cancel lesson");
-    return;
-  }
-
-  // refresh UI
-  router.refresh();
-}
 
   // Parent-only dashboard
   if (user.role && user.role !== "PARENT") redirect("/coach");
@@ -63,33 +44,28 @@ export default async function DashboardPage() {
   }
 
   const upcomingBookings = await prisma.booking.findMany({
-  where: {
-    parentId: dbUser.id,
-    status: { not: "CANCELLED" },
-  },
-  orderBy: { start: "asc" },
-  take: 50,
-  include: { player: { select: { id: true, name: true } } },
-});
+    where: { parentId: dbUser.id },
+    orderBy: { start: "asc" },
+    take: 50,
+    include: { player: { select: { id: true, name: true } } },
+  });
 
-
-return (
-  <DashboardTabsClient
-    parentName={dbUser.name ?? "Parent"}
-    players={players as any}
-    upcomingBookings={upcomingBookings.map((b) => ({
-      id: b.id,
-      startISO: b.start.toISOString(),
-      endISO: b.end.toISOString(),
-      lessonType: (b as any).lessonType ?? null,
-      durationMinutes: (b as any).durationMinutes ?? null,
-      notes: (b as any).notes ?? null,
-      completedAtISO: b.completedAt ? b.completedAt.toISOString() : null,
-      paidAtISO: b.paidAt ? b.paidAt.toISOString() : null,
-      paymentMethod: (b as any).paymentMethod ?? null,
-      status: (b as any).status ?? "CONFIRMED",
-      player: { id: b.player.id, name: b.player.name },
-    }))}
-  />
-);
+  return (
+    <DashboardTabsClient
+      parentName={dbUser.name ?? "Parent"}
+      players={players as any}
+      upcomingBookings={upcomingBookings.map((b) => ({
+        id: b.id,
+        startISO: b.start.toISOString(),
+        endISO: b.end.toISOString(),
+        lessonType: (b as any).lessonType ?? null,
+        durationMinutes: (b as any).durationMinutes ?? null,
+        notes: (b as any).notes ?? null,
+        completedAtISO: b.completedAt ? b.completedAt.toISOString() : null,
+        paidAtISO: (b as any).paidAt ? (b as any).paidAt.toISOString() : null,
+        paymentMethod: (b as any).paymentMethod ?? null,
+        player: { id: b.player.id, name: b.player.name },
+      }))}
+    />
+  );
 }
