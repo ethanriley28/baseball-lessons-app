@@ -146,29 +146,45 @@ export default function DashboardTabsClient(props: {
 
   const nowMs = useMemo(() => Date.now(), []);
 
-  const bookingsSorted = useMemo(() => {
-    return [...props.upcomingBookings].sort(
-      (a, b) => new Date(a.startISO).getTime() - new Date(b.startISO).getTime()
-    );
-  }, [props.upcomingBookings]);
+  const router = useRouter();
+
+const [bookings, setBookings] = useState<BookingRow[]>(props.upcomingBookings);
+
+useEffect(() => {
+  setBookings(props.upcomingBookings);
+}, [props.upcomingBookings]);
+
+
+const upcoming = useMemo(() => {
+  return [...bookings].sort(
+    (a, b) => new Date(a.startISO).getTime() - new Date(b.startISO).getTime()
+  );
+}, [bookings]);
+
 
   const [bookingView, setBookingView] = useState<"UPCOMING" | "COMPLETED" | "ALL">("UPCOMING");
 
   const bookingsFiltered = useMemo(() => {
-  const all = [...props.upcomingBookings].sort(
+  const all = [...bookings].sort(
     (a, b) => new Date(a.startISO).getTime() - new Date(b.startISO).getTime()
   );
 
   if (bookingView === "ALL") return all;
 
   if (bookingView === "COMPLETED") {
-    return all.filter((b: any) => Boolean((b as any).completedAtISO));
+    return all.filter((b) => Boolean(b.completedAtISO));
   }
-  const router = useRouter();
+
+  // UPCOMING
+  return all.filter((b) => !Boolean(b.completedAtISO));
+}, [bookings, bookingView]);
 
 async function cancelLesson(bookingId: string) {
+  const ok = confirm("Cancel this lesson? This cannot be undone.");
+  if (!ok) return;
+
   try {
-    const res = await fetch("/api/bookings/cancel", {
+    const res = await fetch("/api/booking/cancel", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bookingId }),
@@ -176,23 +192,17 @@ async function cancelLesson(bookingId: string) {
 
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      alert(`Failed to cancel lesson.${txt ? `\n\n${txt}` : ""}`);
+      alert(`Failed to cancel lesson.\n\n${txt || "Unknown error"}`);
       return;
     }
 
-    // ✅ remove it from the UI immediately
+    // remove from UI immediately
     setBookings((prev) => prev.filter((b) => b.id !== bookingId));
   } catch (e) {
     console.error(e);
     alert("Network error cancelling lesson.");
   }
 }
-
-
-  // UPCOMING
-  return all.filter((b: any) => !Boolean((b as any).completedAtISO));
-}, [props.upcomingBookings, bookingView]);
-
 
   return (
     <main style={{ minHeight: "100vh", background: "#f6f7fb", padding: 24 }}>
@@ -522,7 +532,6 @@ function rescheduleUrl(playerId: string) {
     type="button"
     onClick={() => cancelLesson(b.id)}
     style={{
-      marginTop: 8,
       padding: "8px 12px",
       borderRadius: 12,
       border: "1px solid #ef4444",
@@ -530,12 +539,12 @@ function rescheduleUrl(playerId: string) {
       color: "#ef4444",
       fontWeight: 900,
       cursor: "pointer",
-      width: "fit-content",
     }}
   >
     Cancel Lesson
   </button>
 )}
+
 
 
         const title = `${b.player.name} · ${b.lessonType ?? "Lesson"}`;
