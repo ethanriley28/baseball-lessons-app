@@ -4,6 +4,8 @@ import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import SignOutButton from "@/components/SignOutButton";
+import { useRouter } from "next/navigation";
+
 
 type PlayerCard = {
   id: string;
@@ -34,11 +36,13 @@ type BookingRow = {
   lessonType: string | null;
   durationMinutes: number | null;
   notes: string | null;
-  completedAtISO: string | null;
-  paidAtISO: string | null;
-  paymentMethod: string | null;
+  completedAtISO?: string | null;
+  paidAtISO?: string | null;
+  paymentMethod?: string | null;
+  status?: string | null;
   player: { id: string; name: string };
 };
+
 
 function pillStyle(active: boolean): React.CSSProperties {
   return {
@@ -160,6 +164,30 @@ export default function DashboardTabsClient(props: {
   if (bookingView === "COMPLETED") {
     return all.filter((b: any) => Boolean((b as any).completedAtISO));
   }
+  const router = useRouter();
+
+async function cancelLesson(bookingId: string) {
+  try {
+    const res = await fetch("/api/bookings/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bookingId }),
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      alert(`Failed to cancel lesson.${txt ? `\n\n${txt}` : ""}`);
+      return;
+    }
+
+    // ✅ remove it from the UI immediately
+    setBookings((prev) => prev.filter((b) => b.id !== bookingId));
+  } catch (e) {
+    console.error(e);
+    alert("Network error cancelling lesson.");
+  }
+}
+
 
   // UPCOMING
   return all.filter((b: any) => !Boolean((b as any).completedAtISO));
@@ -480,6 +508,7 @@ function rescheduleUrl(playerId: string) {
       {bookingsFiltered.map((b) => {
         const isCompleted = Boolean(b.completedAtISO);
         const isPaid = Boolean(b.paidAtISO);
+        
 
         const isUpcoming = (() => {
           try {
@@ -488,6 +517,26 @@ function rescheduleUrl(playerId: string) {
             return false;
           }
         })();
+        {!b.completedAtISO && (
+  <button
+    type="button"
+    onClick={() => cancelLesson(b.id)}
+    style={{
+      marginTop: 8,
+      padding: "8px 12px",
+      borderRadius: 12,
+      border: "1px solid #ef4444",
+      background: "#fff",
+      color: "#ef4444",
+      fontWeight: 900,
+      cursor: "pointer",
+      width: "fit-content",
+    }}
+  >
+    Cancel Lesson
+  </button>
+)}
+
 
         const title = `${b.player.name} · ${b.lessonType ?? "Lesson"}`;
         const details = `${title}\n${fmtDT(b.startISO)} → ${fmtDT(b.endISO)}${b.durationMinutes ? ` (${b.durationMinutes} min)` : ""}`;
@@ -527,6 +576,12 @@ function rescheduleUrl(playerId: string) {
                 <b>Notes:</b> {b.notes}
               </div>
             ) : null}
+            {b.notes ? (
+  <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.35 }}>
+    <b>Notes:</b> {b.notes}
+  </div>
+) : null}
+
 
             {/* Actions (mainly for UPCOMING) */}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>

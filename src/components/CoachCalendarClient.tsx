@@ -137,6 +137,11 @@ export function CoachCalendarClient({ monthISO, bookings, availability, nowISO }
 
   const [selectedBooking, setSelectedBooking] = useState<BookingForCalendar | null>(null);
 
+  const activeBookings = useMemo(
+  () => localBookings.filter((b: any) => (b as any).status !== "CANCELLED"),
+  [localBookings]
+);
+
   // Tooltip
   const [tooltip, setTooltip] = useState<{ show: boolean; x: number; y: number; text: string }>({
     show: false,
