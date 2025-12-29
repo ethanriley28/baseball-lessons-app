@@ -100,11 +100,6 @@ export default async function CoachCalendarPage({ searchParams }: PageProps) {
     where: { paidAt: { gte: weekStart, lt: weekEnd } },
     select: { durationMinutes: true },
   });
-  where: {
-  status: { not: "CANCELLED" },
-  // ...the rest of your filters
-}
-
 
   const weekPaidCount = weekPaid.length;
   const weekEarnings = weekPaid.reduce(
@@ -122,10 +117,14 @@ export default async function CoachCalendarPage({ searchParams }: PageProps) {
 
   // Pull bookings for the visible month
   const bookings = await prisma.booking.findMany({
-    where: { start: { gte: monthStart, lt: monthEnd } },
-    include: { player: true },
-    orderBy: { start: "asc" },
-  });
+  where: {
+    start: { gte: monthStart, lt: monthEnd },
+    status: { not: "CANCELLED" },
+  },
+  include: { player: true },
+  orderBy: { start: "asc" },
+});
+
 
   // Availability blocks that overlap this month
   const availabilityBlocks = await prisma.availabilityBlock.findMany({

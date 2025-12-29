@@ -44,11 +44,16 @@ export default async function DashboardPage() {
   }
 
   const upcomingBookings = await prisma.booking.findMany({
-    where: { parentId: dbUser.id },
-    orderBy: { start: "asc" },
-    take: 50,
-    include: { player: { select: { id: true, name: true } } },
-  });
+  where: {
+    parentId: dbUser.id,
+    status: { not: "CANCELLED" },
+  },
+  orderBy: { start: "asc" },
+  take: 50,
+  include: { player: { select: { id: true, name: true } } },
+});
+
+
 
   return (
     <DashboardTabsClient

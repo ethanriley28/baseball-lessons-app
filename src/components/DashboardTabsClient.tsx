@@ -34,13 +34,11 @@ type BookingRow = {
   lessonType: string | null;
   durationMinutes: number | null;
   notes: string | null;
-  player: { id: string; name: string };
-
-  // optional fields (safe if not provided from server yet)
-  status?: string | null;
   completedAtISO?: string | null;
   paidAtISO?: string | null;
   paymentMethod?: string | null;
+  status?: string | null; // CONFIRMED / CANCELLED etc
+  player: { id: string; name: string };
 };
 
 function pillStyle(active: boolean): React.CSSProperties {
@@ -100,29 +98,29 @@ function MetricMini({ label, value }: { label: string; value: string }) {
 }
 
 function Badge({
-  tone,
   children,
+  tone,
 }: {
-  tone: "green" | "blue" | "red" | "gray";
   children: React.ReactNode;
+  tone: "green" | "blue" | "red" | "gray";
 }) {
-  const map: Record<string, { bg: string; border: string; text: string }> = {
-    green: { bg: "#ecfdf5", border: "#a7f3d0", text: "#065f46" },
-    blue: { bg: "#eff6ff", border: "#bfdbfe", text: "#1d4ed8" },
-    red: { bg: "#fef2f2", border: "#fecaca", text: "#b91c1c" },
-    gray: { bg: "#f9fafb", border: "#e5e7eb", text: "#374151" },
-  };
-  const t = map[tone];
+  const map = {
+    green: { bg: "#ecfdf5", text: "#065f46", border: "#a7f3d0" },
+    blue: { bg: "#eff6ff", text: "#1e40af", border: "#bfdbfe" },
+    red: { bg: "#fef2f2", text: "#991b1b", border: "#fecaca" },
+    gray: { bg: "#f9fafb", text: "#374151", border: "#e5e7eb" },
+  }[tone];
+
   return (
     <span
       style={{
-        border: `1px solid ${t.border}`,
-        background: t.bg,
-        color: t.text,
-        fontWeight: 900,
         fontSize: 12,
+        fontWeight: 900,
         padding: "6px 10px",
         borderRadius: 9999,
+        background: map.bg,
+        color: map.text,
+        border: `1px solid ${map.border}`,
         whiteSpace: "nowrap",
       }}
     >
@@ -140,65 +138,48 @@ export default function DashboardTabsClient(props: {
   const searchParams = useSearchParams();
 
   const [tab, setTab] = useState<"players" | "book" | "upcoming" | "account">("players");
-  const [bookingView, setBookingView] = useState<"UPCOMING" | "COMPLETED" | "ALL">("UPCOMING");
+  const tabFromUrl = searchParams.get("tab");
 
-  // ✅ IMPORTANT: keep local bookings state so cancel can remove instantly
+  useEffect(() => {
+    if (tabFromUrl === "upcoming") setTab("upcoming");
+    if (tabFromUrl === "players") setTab("players");
+    if (tabFromUrl === "book") setTab("book");
+    if (tabFromUrl === "account") setTab("account");
+  }, [tabFromUrl]);
+
+  // ✅ Keep bookings in state so cancel can remove instantly
   const [bookings, setBookings] = useState<BookingRow[]>(props.upcomingBookings ?? []);
-
-  // keep bookings in sync if server data changes
   useEffect(() => {
     setBookings(props.upcomingBookings ?? []);
   }, [props.upcomingBookings]);
 
-  const tabFromUrl = searchParams.get("tab");
-  useEffect(() => {
-    if (tabFromUrl === "upcoming") setTab("upcoming");
-  }, [tabFromUrl]);
+  const [bookingView, setBookingView] = useState<"UPCOMING" | "COMPLETED" | "ALL">("UPCOMING");
 
-  const bookingsSorted = useMemo(() => {
+  const upcomingSorted = useMemo(() => {
     return [...bookings].sort(
       (a, b) => new Date(a.startISO).getTime() - new Date(b.startISO).getTime()
     );
   }, [bookings]);
 
-  // ✅ Always hide cancelled in parent UI
-  const bookingsNotCancelled = useMemo(() => {
-    return bookingsSorted.filter((b) => (b.status ?? "CONFIRMED") !== "CANCELLED");
-  }, [bookingsSorted]);
-
   const bookingsFiltered = useMemo(() => {
     const now = Date.now();
 
-    // determine "completed" even if completedAtISO not provided (fallback to end time)
-    const withComputed = bookingsNotCancelled.map((b) => {
-      const startMs = new Date(b.startISO).getTime();
-      const endMs =
-        b.endISO != null
-          ? new Date(b.endISO).getTime()
-          : b.durationMinutes
-          ? startMs + b.durationMinutes * 60_000
-          : startMs;
+    // ✅ IMPORTANT: never show cancelled in Upcoming tab
+    const nonCancelled = upcomingSorted.filter((b) => (b.status ?? "CONFIRMED") !== "CANCELLED");
 
-      const computedCompleted =
-        Boolean(b.completedAtISO) || (endMs < now && (b.status ?? "CONFIRMED") !== "CANCELLED");
+    if (bookingView === "ALL") return nonCancelled;
 
-      return { b, endMs, computedCompleted };
-    });
-
-    if (bookingView === "ALL") return withComputed.map((x) => x.b);
-
-    if (bookingView === "COMPLETED") return withComputed.filter((x) => x.computedCompleted).map((x) => x.b);
+    if (bookingView === "COMPLETED") {
+      return nonCancelled.filter((b) => Boolean(b.completedAtISO) || new Date(b.startISO).getTime() < now);
+    }
 
     // UPCOMING
-    return withComputed.filter((x) => !x.computedCompleted).map((x) => x.b);
-  }, [bookingsNotCancelled, bookingView]);
+    return nonCancelled.filter((b) => new Date(b.startISO).getTime() >= now && !b.completedAtISO);
+  }, [upcomingSorted, bookingView]);
 
   async function cancelLesson(bookingId: string) {
-    const ok = confirm("Cancel this lesson?");
+    const ok = confirm("Cancel this lesson? This will free up the slot again.");
     if (!ok) return;
-
-    // optimistic remove
-    setBookings((prev) => prev.filter((b) => b.id !== bookingId));
 
     try {
       const res = await fetch("/api/bookings/cancel", {
@@ -208,20 +189,19 @@ export default function DashboardTabsClient(props: {
       });
 
       if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        alert(`Failed to cancel lesson.${txt ? `\n\n${txt}` : ""}`);
-
-        // rollback if failed
-        setBookings(props.upcomingBookings ?? []);
+        const msg = await res.text().catch(() => "");
+        alert(`Failed to cancel lesson.${msg ? `\n\n${msg}` : ""}`);
         return;
       }
 
-      // keep server in sync
+      // ✅ remove immediately
+      setBookings((prev) => prev.filter((b) => b.id !== bookingId));
+
+      // ✅ refresh server data too
       router.refresh();
     } catch (e) {
       console.error(e);
       alert("Network error cancelling lesson.");
-      setBookings(props.upcomingBookings ?? []);
     }
   }
 
@@ -248,26 +228,25 @@ export default function DashboardTabsClient(props: {
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <Link
-              href="/book"
+              href="/players/new"
               style={{
                 textDecoration: "none",
-                background: "#2563eb",
+                background: "#111827",
                 color: "#fff",
                 fontWeight: 900,
                 padding: "10px 12px",
                 borderRadius: 12,
-                boxShadow: "0 14px 26px rgba(37,99,235,0.18)",
                 display: "inline-block",
               }}
             >
-              + Book Lesson
+              + Add Player
             </Link>
             <SignOutButton />
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="tabsRow" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
           <button style={pillStyle(tab === "players")} onClick={() => setTab("players")}>
             Players ({props.players.length})
           </button>
@@ -369,12 +348,6 @@ export default function DashboardTabsClient(props: {
                 </Link>
               ))}
             </div>
-
-            {props.players.length === 0 && (
-              <div style={{ marginTop: 14, color: "#6b7280", fontSize: 14 }}>
-                No players yet. Click <b>+ Book Lesson</b> at the top to get started.
-              </div>
-            )}
           </section>
         )}
 
@@ -432,16 +405,8 @@ export default function DashboardTabsClient(props: {
 
             <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
               {bookingsFiltered.map((b) => {
-                const isCancelled = (b.status ?? "CONFIRMED") === "CANCELLED";
-                const isPaid = Boolean(b.paidAtISO);
                 const isCompleted = Boolean(b.completedAtISO);
-
-                // end time fallback
-                const endISO =
-                  b.endISO ??
-                  (b.durationMinutes
-                    ? new Date(new Date(b.startISO).getTime() + b.durationMinutes * 60_000).toISOString()
-                    : b.startISO);
+                const isPaid = Boolean(b.paidAtISO);
 
                 return (
                   <div
@@ -462,18 +427,20 @@ export default function DashboardTabsClient(props: {
                       </div>
 
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {isCancelled ? (
-                          <Badge tone="red">Cancelled</Badge>
-                        ) : (
-                          <Badge tone={isCompleted ? "green" : "blue"}>{isCompleted ? "Completed" : "Scheduled"}</Badge>
-                        )}
+                        <Badge tone={isCompleted ? "green" : "blue"}>{isCompleted ? "Completed" : "Scheduled"}</Badge>
                         <Badge tone={isPaid ? "green" : "red"}>{isPaid ? "Paid" : "Unpaid"}</Badge>
                         {b.paymentMethod ? <Badge tone="gray">{b.paymentMethod}</Badge> : null}
                       </div>
                     </div>
 
                     <div style={{ fontSize: 13, color: "#374151" }}>
-                      <b>{fmtDT(b.startISO)}</b> → {fmtDT(endISO)}
+                      <b>{fmtDT(b.startISO)}</b>
+                      {b.endISO ? (
+                        <>
+                          {" "}
+                          → {fmtDT(b.endISO)}
+                        </>
+                      ) : null}
                       {b.durationMinutes ? ` · ${b.durationMinutes} min` : null}
                     </div>
 
@@ -483,42 +450,23 @@ export default function DashboardTabsClient(props: {
                       </div>
                     ) : null}
 
-                    {/* Actions */}
-                    {!isCancelled && !isCompleted ? (
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
-                        <button
-                          type="button"
-                          onClick={() => cancelLesson(b.id)}
-                          style={{
-                            padding: "8px 12px",
-                            borderRadius: 12,
-                            border: "1px solid #ef4444",
-                            background: "#fff",
-                            color: "#ef4444",
-                            fontWeight: 900,
-                            cursor: "pointer",
-                            width: "fit-content",
-                          }}
-                        >
-                          Cancel
-                        </button>
-
-                        <Link
-                          href="/book"
-                          style={{
-                            textDecoration: "none",
-                            border: "1px solid #e5e7eb",
-                            background: "#fff",
-                            color: "#111827",
-                            fontWeight: 900,
-                            padding: "8px 12px",
-                            borderRadius: 12,
-                            display: "inline-block",
-                          }}
-                        >
-                          Reschedule
-                        </Link>
-                      </div>
+                    {!isCompleted ? (
+                      <button
+                        type="button"
+                        onClick={() => cancelLesson(b.id)}
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 12,
+                          border: "1px solid #ef4444",
+                          background: "#fff",
+                          color: "#ef4444",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                          width: "fit-content",
+                        }}
+                      >
+                        Cancel
+                      </button>
                     ) : null}
                   </div>
                 );
@@ -535,34 +483,45 @@ export default function DashboardTabsClient(props: {
         {tab === "account" && (
           <section style={cardStyle()}>
             <div style={{ fontSize: 18, fontWeight: 900 }}>Account</div>
-            <div style={{ marginTop: 10, fontSize: 13, color: "#6b7280" }}>
+            <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
+              Manage your profile and settings.
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <Link
+                href="/book"
+                style={{
+                  textDecoration: "none",
+                  border: "1px solid #e5e7eb",
+                  background: "#fff",
+                  color: "#111827",
+                  fontWeight: 900,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  display: "inline-block",
+                }}
+              >
+                Book a Lesson
+              </Link>
+            </div>
+
+            <div style={{ marginTop: 12, fontSize: 13, color: "#6b7280" }}>
               More settings (password reset, notifications, etc.) can go here later.
             </div>
           </section>
         )}
       </div>
 
-      {/* ✅ Mobile-only fixes: desktop unchanged */}
+      {/* Mobile-only: stack player cards + bottom nav */}
       <style>{`
         @media (max-width: 820px) {
           .playersGrid {
             grid-template-columns: 1fr !important;
           }
-          .playerCard {
-            padding: 14px !important;
-          }
-          .playerCard * {
-            max-width: 100%;
-          }
-          .metricsRow {
-            display: flex !important;
-            flex-wrap: wrap !important;
-            gap: 8px !important;
-          }
         }
       `}</style>
 
-      {/* Mobile Bottom Nav (only shows on small screens) */}
+      {/* Mobile Bottom Nav */}
       <div className="mobileNav">
         <button className={`navBtn ${tab === "players" ? "active" : ""}`} onClick={() => setTab("players")}>
           <div className="navIcon">👤</div>
@@ -587,13 +546,7 @@ export default function DashboardTabsClient(props: {
 
       <style>{`
         .mobileNav { display: none; }
-
         @media (max-width: 820px) {
-          /* Give space so the bottom nav doesn't cover content */
-          main { padding-bottom: 96px !important; }
-
-          .tabsRow { display: none !important; }
-
           .mobileNav {
             position: fixed;
             left: 12px;
@@ -611,7 +564,6 @@ export default function DashboardTabsClient(props: {
             box-shadow: 0 18px 40px rgba(15,23,42,0.18);
             z-index: 9999;
           }
-
           .navBtn {
             border: none;
             background: transparent;
@@ -624,12 +576,10 @@ export default function DashboardTabsClient(props: {
             color: #111827;
             font-weight: 900;
           }
-
           .navBtn.active {
             background: #111827;
             color: #fff;
           }
-
           .navIcon { font-size: 18px; line-height: 1; }
           .navLabel { font-size: 11px; line-height: 1; opacity: 0.9; }
         }
