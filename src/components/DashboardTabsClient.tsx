@@ -2,45 +2,22 @@
 
 import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import SignOutButton from "@/components/SignOutButton";
+import { useRouter, useSearchParams } from "next/navigation";
 
-type PlayerCard = {
-  id: string;
-  name: string;
-  school?: string | null;
-  classYear?: string | null;
-  gradYear?: number | null;
-  position?: string | null;
-  bats?: string | null;
-  throws?: string | null;
-  travelOrg?: string | null;
-  age?: number | null;
-  photoUrl?: string | null;
-  metrics?: {
-    teeExitVelo?: number | null;
-    softTossExitVelo?: number | null;
-    sixtyTime?: number | null;
-    fiveTenFiveTime?: number | null;
-    homeToFirstTime?: number | null;
-    homeToSecondTime?: number | null;
-  } | null;
-};
+/**
+ * IMPORTANT:
+ * Your /book page already fetches “slots” from some API endpoint.
+ * Set this constant to the SAME endpoint your /book page uses.
+ *
+ * If your /book page fetch is something like:
+ *   fetch("/api/availability/slots?playerId=...&days=14")
+ * then keep it as "/api/availability/slots".
+ *
+ * If it’s different, change this ONE constant.
+ */
+const RESCHEDULE_SLOTS_ENDPOINT = "/api/availability/slots";
 
-type BookingRow = {
-  id: string;
-  startISO: string;
-  endISO?: string | null;
-  lessonType: string | null;
-  durationMinutes: number | null;
-  notes: string | null;
-  completedAtISO?: string | null;
-  paidAtISO?: string | null;
-  paymentMethod?: string | null;
-  status?: string | null; // CONFIRMED / CANCELLED etc
-  player: { id: string; name: string };
-};
-
+/** UI helpers */
 function pillStyle(active: boolean): React.CSSProperties {
   return {
     padding: "10px 14px",
@@ -77,57 +54,77 @@ function fmtDT(iso: string) {
   });
 }
 
-function MetricMini({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: 9999,
-        padding: "6px 10px",
-        fontSize: 12,
-        background: "#f9fafb",
-        display: "inline-flex",
-        gap: 8,
-        alignItems: "center",
-      }}
-    >
-      <span style={{ color: "#6b7280", fontWeight: 800 }}>{label}</span>
-      <span style={{ fontWeight: 900 }}>{value}</span>
-    </div>
-  );
-}
-
 function Badge({
-  children,
   tone,
+  children,
 }: {
-  children: React.ReactNode;
   tone: "green" | "blue" | "red" | "gray";
+  children: React.ReactNode;
 }) {
-  const map = {
-    green: { bg: "#ecfdf5", text: "#065f46", border: "#a7f3d0" },
-    blue: { bg: "#eff6ff", text: "#1e40af", border: "#bfdbfe" },
-    red: { bg: "#fef2f2", text: "#991b1b", border: "#fecaca" },
-    gray: { bg: "#f9fafb", text: "#374151", border: "#e5e7eb" },
-  }[tone];
-
+  const map: Record<string, React.CSSProperties> = {
+    green: { background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#065f46" },
+    blue: { background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e40af" },
+    red: { background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b" },
+    gray: { background: "#f9fafb", border: "1px solid #e5e7eb", color: "#374151" },
+  };
   return (
     <span
       style={{
+        ...map[tone],
         fontSize: 12,
         fontWeight: 900,
         padding: "6px 10px",
         borderRadius: 9999,
-        background: map.bg,
-        color: map.text,
-        border: `1px solid ${map.border}`,
-        whiteSpace: "nowrap",
       }}
     >
       {children}
     </span>
   );
 }
+
+/** Types */
+type PlayerCard = {
+  id: string;
+  name: string;
+  school?: string | null;
+  classYear?: string | null;
+  gradYear?: number | null;
+  position?: string | null;
+  bats?: string | null;
+  throws?: string | null;
+  travelOrg?: string | null;
+  age?: number | null;
+  photoUrl?: string | null;
+  metrics?: {
+    teeExitVelo?: number | null;
+    softTossExitVelo?: number | null;
+    sixtyTime?: number | null;
+    fiveTenFiveTime?: number | null;
+    homeToFirstTime?: number | null;
+    homeToSecondTime?: number | null;
+  } | null;
+};
+
+type BookingRow = {
+  id: string;
+  startISO: string;
+  lessonType: string | null;
+  durationMinutes: number | null;
+  notes: string | null;
+  completedAtISO?: string | null;
+  paidAtISO?: string | null;
+  paymentMethod?: string | null;
+  status?: string | null;
+  player: { id: string; name: string };
+};
+
+type RescheduleSlot = {
+  id: string;
+  startISO: string;
+  endISO?: string;
+  labelTime?: string;
+  labelDate?: string;
+};
 
 export default function DashboardTabsClient(props: {
   parentName: string;
@@ -138,49 +135,28 @@ export default function DashboardTabsClient(props: {
   const searchParams = useSearchParams();
 
   const [tab, setTab] = useState<"players" | "book" | "upcoming" | "account">("players");
-  const tabFromUrl = searchParams.get("tab");
+  const [bookingView, setBookingView] = useState<"UPCOMING" | "COMPLETED" | "ALL">("UPCOMING");
 
+  // keep bookings in state so cancel/reschedule updates UI immediately
+  const [bookings, setBookings] = useState<BookingRow[]>(props.upcomingBookings || []);
+
+  // handle URL tab param if you use it
+  const tabFromUrl = searchParams.get("tab");
   useEffect(() => {
     if (tabFromUrl === "upcoming") setTab("upcoming");
     if (tabFromUrl === "players") setTab("players");
-    if (tabFromUrl === "book") setTab("book");
     if (tabFromUrl === "account") setTab("account");
+    if (tabFromUrl === "book") setTab("book");
   }, [tabFromUrl]);
 
-  // ✅ Keep bookings in state so cancel can remove instantly
-  const [bookings, setBookings] = useState<BookingRow[]>(props.upcomingBookings ?? []);
-  useEffect(() => {
-    setBookings(props.upcomingBookings ?? []);
-  }, [props.upcomingBookings]);
-
-  const [bookingView, setBookingView] = useState<"UPCOMING" | "COMPLETED" | "ALL">("UPCOMING");
-
-  const upcomingSorted = useMemo(() => {
-    return [...bookings].sort(
-      (a, b) => new Date(a.startISO).getTime() - new Date(b.startISO).getTime()
-    );
-  }, [bookings]);
-
-  const bookingsFiltered = useMemo(() => {
-    const now = Date.now();
-
-    // ✅ IMPORTANT: never show cancelled in Upcoming tab
-    const nonCancelled = upcomingSorted.filter((b) => (b.status ?? "CONFIRMED") !== "CANCELLED");
-
-    if (bookingView === "ALL") return nonCancelled;
-
-    if (bookingView === "COMPLETED") {
-      return nonCancelled.filter((b) => Boolean(b.completedAtISO) || new Date(b.startISO).getTime() < now);
-    }
-
-    // UPCOMING
-    return nonCancelled.filter((b) => new Date(b.startISO).getTime() >= now && !b.completedAtISO);
-  }, [upcomingSorted, bookingView]);
+  // ✅ Cancel flow
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   async function cancelLesson(bookingId: string) {
-    const ok = confirm("Cancel this lesson? This will free up the slot again.");
+    const ok = window.confirm("Cancel this lesson? This will free the time back up.");
     if (!ok) return;
 
+    setCancellingId(bookingId);
     try {
       const res = await fetch("/api/bookings/cancel", {
         method: "POST",
@@ -189,162 +165,169 @@ export default function DashboardTabsClient(props: {
       });
 
       if (!res.ok) {
-        const msg = await res.text().catch(() => "");
-        alert(`Failed to cancel lesson.${msg ? `\n\n${msg}` : ""}`);
+        const txt = await res.text().catch(() => "");
+        alert(`Failed to cancel lesson.${txt ? `\n\n${txt}` : ""}`);
         return;
       }
-      function goReschedule(bookingId: string, playerId: string) {
-  // sends parent to booking page in reschedule mode
-  const url = `/book?reschedule=${encodeURIComponent(bookingId)}&playerId=${encodeURIComponent(
-    playerId
-  )}`;
-  window.location.href = url;
-}
 
-
-      // ✅ remove immediately
+      // remove from UI immediately (or mark cancelled)
       setBookings((prev) => prev.filter((b) => b.id !== bookingId));
 
-      // ✅ refresh server data too
+      // refresh server components (coach calendar + any server-rendered views)
       router.refresh();
     } catch (e) {
       console.error(e);
       alert("Network error cancelling lesson.");
+    } finally {
+      setCancellingId(null);
     }
   }
 
-    const [rescheduleOpen, setRescheduleOpen] = useState(false);
-  const [rescheduleBookingId, setRescheduleBookingId] = useState<string | null>(null);
-  const [reschedulePlayerLabel, setReschedulePlayerLabel] = useState<string>("");
-  const [rescheduleDate, setRescheduleDate] = useState<string>("");
-  const [rescheduleTime, setRescheduleTime] = useState<string>("");
+  // ✅ Reschedule flow (parent side)
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
-  const [rescheduleSlots, setRescheduleSlots] = useState<
-  { id: string; startISO: string; labelTime: string }[]
->([]);
-const [rescheduleStartISO, setRescheduleStartISO] = useState<string>("");
-const [loadingRescheduleSlots, setLoadingRescheduleSlots] = useState(false);
 
+  const [rescheduleBookingId, setRescheduleBookingId] = useState<string>("");
+  const [reschedulePlayerId, setReschedulePlayerId] = useState<string>("");
+  const [reschedulePlayerLabel, setReschedulePlayerLabel] = useState<string>("");
 
-useEffect(() => {
-  const run = async () => {
-    if (!rescheduleOpen) return;
-    if (!rescheduleDate) return;
+  const [loadingRescheduleSlots, setLoadingRescheduleSlots] = useState(false);
+  const [rescheduleSlots, setRescheduleSlots] = useState<RescheduleSlot[]>([]);
+  const [rescheduleStartISO, setRescheduleStartISO] = useState<string>(""); // ✅ THIS FIXES YOUR BUILD ERRORS
 
-    try {
+  function openRescheduleModal(b: BookingRow) {
+    setRescheduleBookingId(b.id);
+    setReschedulePlayerId(b.player.id);
+    setReschedulePlayerLabel(`${b.player.name} · ${b.lessonType ?? "Lesson"} (${fmtDT(b.startISO)})`);
+    setRescheduleOpen(true);
+    setRescheduleSlots([]);
+    setRescheduleStartISO("");
+  }
+
+  // Fetch available slots when modal opens
+  useEffect(() => {
+    if (!rescheduleOpen || !reschedulePlayerId) return;
+
+    (async () => {
       setLoadingRescheduleSlots(true);
       setRescheduleSlots([]);
       setRescheduleStartISO("");
 
-      // ✅ Use the SAME endpoint your /book page uses
-      // Replace this with the URL you found in DevTools Network.
-      const url = `FETCH_URL_HERE`;
+      try {
+        // NOTE: This must match what your /book page uses.
+        // Common patterns:
+        //   /api/availability/slots?playerId=XXX&days=14
+        //   /api/availability/slots?days=14
+        // If your endpoint doesn't need playerId, it will just ignore it.
+        const url = `${RESCHEDULE_SLOTS_ENDPOINT}?playerId=${encodeURIComponent(reschedulePlayerId)}&days=14`;
 
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        console.error("reschedule slots fetch failed", txt);
+        const res = await fetch(url, { method: "GET" });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          console.warn("Reschedule slots fetch failed:", txt);
+          setRescheduleSlots([]);
+          return;
+        }
+
+        const data = await res.json().catch(() => null);
+
+        // Accept a few common shapes:
+        // 1) { slots: [...] }
+        // 2) [...] directly
+        const rawSlots: any[] = Array.isArray(data) ? data : Array.isArray(data?.slots) ? data.slots : [];
+
+        // Normalize to { id, startISO, labelTime, labelDate }
+        const normalized: RescheduleSlot[] = rawSlots
+          .map((s: any) => {
+            const startISO = s?.startISO ?? s?.start ?? s?.start_time ?? null;
+            if (!startISO) return null;
+
+            const id = s?.id ?? startISO;
+            const endISO = s?.endISO ?? s?.end ?? null;
+
+            // If API already provides labelTime/labelDate, use them; else create.
+            const d = new Date(startISO);
+            const labelTime =
+              s?.labelTime ??
+              d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+            const labelDate =
+              s?.labelDate ??
+              d.toLocaleDateString(undefined, { weekday: "short", month: "numeric", day: "numeric" });
+
+            return { id, startISO, endISO, labelTime, labelDate };
+          })
+          .filter(Boolean) as RescheduleSlot[];
+
+        setRescheduleSlots(normalized);
+      } catch (e) {
+        console.error(e);
         setRescheduleSlots([]);
-        return;
+      } finally {
+        setLoadingRescheduleSlots(false);
       }
-
-      const data = await res.json();
-
-      // Accept either { slots: [...] } or direct array
-      const slots = Array.isArray(data) ? data : data.slots;
-
-      setRescheduleSlots(
-        (slots ?? []).map((s: any) => ({
-          id: s.id ?? s.startISO,
-          startISO: s.startISO,
-          labelTime: s.labelTime,
-        }))
-      );
-    } finally {
-      setLoadingRescheduleSlots(false);
-    }
-  };
-
-  run();
-}, [rescheduleOpen, rescheduleDate]);
-
-
-
-  function openReschedule(b: any) {
-    setRescheduleBookingId(b.id);
-    setReschedulePlayerLabel(`${b.player?.name ?? "Player"} · ${b.lessonType ?? "Lesson"}`);
-
-    // prefill with current booking local date/time
-    const d = new Date(b.startISO);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const min = String(d.getMinutes()).padStart(2, "0");
-    setRescheduleDate(`${yyyy}-${mm}-${dd}`);
-    setRescheduleTime(`${hh}:${min}`);
-
-    setRescheduleOpen(true);
-    setRescheduleStartISO("");
-  }
+    })();
+  }, [rescheduleOpen, reschedulePlayerId]);
 
   async function submitReschedule() {
+    if (!rescheduleBookingId) return;
     if (!rescheduleStartISO) {
-  alert("Pick a time.");
-  return;
-}
-
-await fetch("/api/bookings/reschedule", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    bookingId: rescheduleBookingId,
-    newStartISO: rescheduleStartISO,
-  }),
-});
-
-if (!rescheduleStartISO) {
-  alert("Pick an available time first.");
-  return;
-}
-
-const newStartISO = rescheduleStartISO;
-
+      alert("Pick a new time first.");
+      return;
+    }
 
     setRescheduling(true);
     try {
-      // This creates a local Date in the user's timezone (good for UI),
-      // and we send the ISO to the server.
-      const newStartLocal = new Date(`${rescheduleDate}T${rescheduleTime}:00`);
-      const newStartISO = newStartLocal.toISOString();
-
       const res = await fetch("/api/bookings/reschedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bookingId: rescheduleBookingId,
-          newStartISO,
+          newStartISO: rescheduleStartISO,
         }),
       });
 
       if (!res.ok) {
-        const msg = await res.text().catch(() => "");
-        alert(`Failed to reschedule.${msg ? `\n\n${msg}` : ""}`);
+        const txt = await res.text().catch(() => "");
+        alert(`Failed to reschedule.${txt ? `\n\n${txt}` : ""}`);
         return;
       }
 
-      // simplest + safest: reload so parent + coach stay consistent
-      window.location.reload();
+      // refresh everything
+      setRescheduleOpen(false);
+      setRescheduleSlots([]);
+      setRescheduleStartISO("");
+      router.refresh();
+
+      // Optional: also force local bookings refresh by reloading page
+      // window.location.reload();
     } catch (e) {
       console.error(e);
-      alert("Network error rescheduling lesson.");
+      alert("Network error rescheduling.");
     } finally {
       setRescheduling(false);
-      setRescheduleOpen(false);
-      setRescheduleBookingId(null);
     }
   }
 
+  const upcomingSorted = useMemo(() => {
+    return [...bookings].sort(
+      (a, b) => new Date(a.startISO).getTime() - new Date(b.startISO).getTime()
+    );
+  }, [bookings]);
+
+  const bookingsFiltered = useMemo(() => {
+    // treat CANCELLED as not shown
+    const visible = upcomingSorted.filter((b) => (b.status ?? "CONFIRMED") !== "CANCELLED");
+
+    if (bookingView === "ALL") return visible;
+
+    if (bookingView === "COMPLETED") {
+      return visible.filter((b) => Boolean(b.completedAtISO));
+    }
+
+    // UPCOMING default
+    return visible.filter((b) => !b.completedAtISO);
+  }, [upcomingSorted, bookingView]);
 
   return (
     <main style={{ minHeight: "100vh", background: "#f6f7fb", padding: 24 }}>
@@ -368,126 +351,74 @@ const newStartISO = rescheduleStartISO;
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <Link
-              href="/players/new"
-              style={{
-                textDecoration: "none",
-                background: "#111827",
-                color: "#fff",
-                fontWeight: 900,
-                padding: "10px 12px",
-                borderRadius: 12,
-                display: "inline-block",
-              }}
-            >
-              + Add Player
-            </Link>
-            <SignOutButton />
+            <button style={pillStyle(tab === "players")} onClick={() => setTab("players")}>
+              Players
+            </button>
+            <button style={pillStyle(tab === "book")} onClick={() => setTab("book")}>
+              Book
+            </button>
+            <button style={pillStyle(tab === "upcoming")} onClick={() => setTab("upcoming")}>
+              Upcoming
+            </button>
+            <button style={pillStyle(tab === "account")} onClick={() => setTab("account")}>
+              Account
+            </button>
           </div>
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-          <button style={pillStyle(tab === "players")} onClick={() => setTab("players")}>
-            Players ({props.players.length})
-          </button>
-          <button style={pillStyle(tab === "book")} onClick={() => setTab("book")}>
-            Booking
-          </button>
-          <button style={pillStyle(tab === "upcoming")} onClick={() => setTab("upcoming")}>
-            Upcoming
-          </button>
-          <button style={pillStyle(tab === "account")} onClick={() => setTab("account")}>
-            Account
-          </button>
         </div>
 
         {/* PLAYERS */}
         {tab === "players" && (
           <section style={cardStyle()}>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 900 }}>Your Players</div>
-              <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-                Click a player to view their full profile and metrics.
-              </div>
+            <div style={{ fontSize: 18, fontWeight: 900 }}>Players</div>
+            <div style={{ marginTop: 10, color: "#6b7280", fontSize: 13 }}>
+              Manage your players. (You already have this working.)
             </div>
 
-            <div
-              className="playersGrid"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                gap: 12,
-                marginTop: 14,
-              }}
-            >
+            <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
               {props.players.map((p) => (
-                <Link
+                <div
                   key={p.id}
-                  href={`/player?id=${p.id}`}
-                  className="playerCard"
                   style={{
-                    textDecoration: "none",
-                    color: "inherit",
                     border: "1px solid #e5e7eb",
-                    borderRadius: 18,
+                    borderRadius: 16,
                     padding: 14,
                     background: "#fff",
-                    boxShadow: "0 10px 24px rgba(15,23,42,0.05)",
-                    display: "block",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    alignItems: "center",
                   }}
                 >
-                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    <div
-                      style={{
-                        width: 46,
-                        height: 46,
-                        borderRadius: 14,
-                        overflow: "hidden",
-                        border: "1px solid #e5e7eb",
-                        background: "#f3f4f6",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: 900,
-                      }}
-                    >
-                      {p.photoUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={p.photoUrl}
-                          alt={p.name}
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                        />
-                      ) : (
-                        p.name?.slice(0, 1).toUpperCase()
-                      )}
-                    </div>
-
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 900, fontSize: 16 }}>{p.name}</div>
-                      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
-                        {(p.school ?? "—") +
-                          " · " +
-                          (p.classYear ?? "—") +
-                          (p.gradYear ? ` · Class of ${p.gradYear}` : "")}
-                      </div>
+                  <div>
+                    <div style={{ fontWeight: 900 }}>{p.name}</div>
+                    <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
+                      {p.school ? `${p.school}` : "—"}
+                      {p.position ? ` · ${p.position}` : ""}
                     </div>
                   </div>
 
-                  <div className="metricsRow" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                    <MetricMini
-                      label="Tee"
-                      value={p.metrics?.teeExitVelo != null ? `${p.metrics.teeExitVelo} mph` : "-"}
-                    />
-                    <MetricMini label="60" value={p.metrics?.sixtyTime != null ? `${p.metrics.sixtyTime}s` : "-"} />
-                    <MetricMini
-                      label="5-10-5"
-                      value={p.metrics?.fiveTenFiveTime != null ? `${p.metrics.fiveTenFiveTime}s` : "-"}
-                    />
-                  </div>
-                </Link>
+                  <Link
+                    href="/book"
+                    style={{
+                      textDecoration: "none",
+                      border: "1px solid #e5e7eb",
+                      background: "#fff",
+                      color: "#111827",
+                      fontWeight: 900,
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      display: "inline-block",
+                    }}
+                  >
+                    Book a Lesson
+                  </Link>
+                </div>
               ))}
+
+              {props.players.length === 0 ? (
+                <div style={{ fontSize: 14, color: "#6b7280" }}>No players yet.</div>
+              ) : null}
             </div>
           </section>
         )}
@@ -495,9 +426,9 @@ const newStartISO = rescheduleStartISO;
         {/* BOOK */}
         {tab === "book" && (
           <section style={cardStyle()}>
-            <div style={{ fontSize: 18, fontWeight: 900 }}>Booking</div>
-            <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
-              Use the booking page to select a player and choose an available slot.
+            <div style={{ fontSize: 18, fontWeight: 900 }}>Book</div>
+            <div style={{ marginTop: 10, color: "#6b7280", fontSize: 13 }}>
+              Booking happens on the Book page.
             </div>
 
             <div style={{ marginTop: 14 }}>
@@ -505,12 +436,12 @@ const newStartISO = rescheduleStartISO;
                 href="/book"
                 style={{
                   textDecoration: "none",
-                  background: "#2563eb",
+                  border: "1px solid #111827",
+                  background: "#111827",
                   color: "#fff",
                   fontWeight: 900,
                   padding: "12px 14px",
-                  borderRadius: 12,
-                  boxShadow: "0 14px 26px rgba(37,99,235,0.18)",
+                  borderRadius: 14,
                   display: "inline-block",
                 }}
               >
@@ -576,12 +507,6 @@ const newStartISO = rescheduleStartISO;
 
                     <div style={{ fontSize: 13, color: "#374151" }}>
                       <b>{fmtDT(b.startISO)}</b>
-                      {b.endISO ? (
-                        <>
-                          {" "}
-                          → {fmtDT(b.endISO)}
-                        </>
-                      ) : null}
                       {b.durationMinutes ? ` · ${b.durationMinutes} min` : null}
                     </div>
 
@@ -590,46 +515,43 @@ const newStartISO = rescheduleStartISO;
                         <b>Notes:</b> {b.notes}
                       </div>
                     ) : null}
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
-  <button
-    type="button"
-    onClick={() => openReschedule(b)}
-    style={{
-      padding: "8px 12px",
-      borderRadius: 12,
-      border: "1px solid #111827",
-      background: "#fff",
-      color: "#111827",
-      fontWeight: 900,
-      cursor: "pointer",
-      width: "fit-content",
-    }}
-  >
-    Reschedule
-  </button>
-
-  {/* Keep your existing Cancel button (ONLY ONE) */}
-</div>
-
 
                     {!isCompleted ? (
-                      <button
-                        type="button"
-                        onClick={() => cancelLesson(b.id)}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 12,
-                          border: "1px solid #ef4444",
-                          background: "#fff",
-                          color: "#ef4444",
-                          fontWeight: 900,
-                          cursor: "pointer",
-                          width: "fit-content",
-                        }}
-                        
-                      >
-                        Cancel
-                      </button>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => openRescheduleModal(b)}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 12,
+                            border: "1px solid #111827",
+                            background: "#111827",
+                            color: "#fff",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Reschedule
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={cancellingId === b.id}
+                          onClick={() => cancelLesson(b.id)}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 12,
+                            border: "1px solid #ef4444",
+                            background: "#fff",
+                            color: "#ef4444",
+                            fontWeight: 900,
+                            cursor: cancellingId === b.id ? "not-allowed" : "pointer",
+                            opacity: cancellingId === b.id ? 0.6 : 1,
+                          }}
+                        >
+                          {cancellingId === b.id ? "Cancelling..." : "Cancel"}
+                        </button>
+                      </div>
                     ) : null}
                   </div>
                 );
@@ -646,13 +568,13 @@ const newStartISO = rescheduleStartISO;
         {tab === "account" && (
           <section style={cardStyle()}>
             <div style={{ fontSize: 18, fontWeight: 900 }}>Account</div>
-            <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
-              Manage your profile and settings.
+            <div style={{ marginTop: 10, color: "#6b7280", fontSize: 13 }}>
+              More settings can go here later.
             </div>
 
             <div style={{ marginTop: 14 }}>
               <Link
-                href="/book"
+                href="/"
                 style={{
                   textDecoration: "none",
                   border: "1px solid #e5e7eb",
@@ -664,225 +586,143 @@ const newStartISO = rescheduleStartISO;
                   display: "inline-block",
                 }}
               >
-                Book a Lesson
+                Home
               </Link>
-            </div>
-
-            <div style={{ marginTop: 12, fontSize: 13, color: "#6b7280" }}>
-              More settings (password reset, notifications, etc.) can go here later.
             </div>
           </section>
         )}
       </div>
 
-      {/* Mobile-only: stack player cards + bottom nav */}
-      <style>{`
-        @media (max-width: 820px) {
-          .playersGrid {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
-      {/* Reschedule Modal */}
-{rescheduleOpen && (
-  <div
-    style={{
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,0.35)",
-      display: "grid",
-      placeItems: "center",
-      zIndex: 9999,
-      padding: 16,
-    }}
-    onClick={() => setRescheduleOpen(false)}
-  >
-    <div
-      style={{
-        width: "min(520px, 100%)",
-        background: "#fff",
-        borderRadius: 18,
-        border: "1px solid #e5e7eb",
-        boxShadow: "0 24px 60px rgba(0,0,0,0.25)",
-        padding: 14,
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div style={{ fontWeight: 900, fontSize: 16, color: "#111827" }}>
-        Reschedule Lesson
-      </div>
-      <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6, lineHeight: 1.35 }}>
-        {reschedulePlayerLabel}
-        <br />
-        Pick a new date/time that fits coach availability.
-      </div>
-
-      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-        <div style={{ display: "grid", gap: 6 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Date</div>
-          <input
-            type="date"
-            value={rescheduleDate}
-            onChange={(e) => setRescheduleDate(e.target.value)}
-            style={{
-              border: "1px solid #d1d5db",
-              borderRadius: 12,
-              padding: "10px 12px",
-              fontSize: 16,
-              outline: "none",
-            }}
-          />
-        </div>
-
-      {/* Available Slots */}
-<div style={{ marginTop: 10 }}>
-  <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>
-    Available Times
-  </div>
-
-  {loadingRescheduleSlots ? (
-    <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
-      Loading times...
-    </div>
-  ) : rescheduleSlots.length === 0 ? (
-    <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
-      No available times for this date.
-    </div>
-  ) : (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
-      {rescheduleSlots.map((s) => {
-  const isSelected = rescheduleStartISO === s.startISO;
-
-  return (
-    <button
-      key={s.id}
-      type="button"
-      onClick={() => setRescheduleStartISO(s.startISO)}
-      style={{
-        padding: "8px 12px",
-        borderRadius: 999,
-        border: "1px solid #d1d5db",
-        background: isSelected ? "#111827" : "#fff",
-        color: isSelected ? "#fff" : "#111827",
-        fontWeight: 900,
-        fontSize: 12,
-        cursor: "pointer",
-      }}
-    >
-      {s.labelTime}
-    </button>
-  );
-})}
-
-    </div>
-  )}
-</div>
-
-
-      </div>
-
-      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
-        <button
-          type="button"
+      {/* ✅ Reschedule Modal */}
+      {rescheduleOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 9999,
+            padding: 16,
+          }}
           onClick={() => setRescheduleOpen(false)}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            background: "#fff",
-            color: "#111827",
-            fontWeight: 900,
-            cursor: "pointer",
-          }}
         >
-          Close
-        </button>
+          <div
+            style={{
+              width: "min(620px, 100%)",
+              background: "#fff",
+              borderRadius: 18,
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 24px 60px rgba(0,0,0,0.25)",
+              padding: 14,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 900, fontSize: 16, color: "#111827" }}>
+              Reschedule Lesson
+            </div>
+            <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6, lineHeight: 1.35 }}>
+              {reschedulePlayerLabel}
+              <br />
+              Pick a new time from coach availability.
+            </div>
 
-        <button
-          type="button"
-          onClick={submitReschedule}
-          disabled={rescheduling}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid #111827",
-            background: rescheduling ? "#9ca3af" : "#111827",
-            color: "#fff",
-            fontWeight: 900,
-            cursor: rescheduling ? "not-allowed" : "pointer",
-          }}
-        >
-          {rescheduling ? "Saving..." : "Save New Time"}
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+            <div style={{ marginTop: 12 }}>
+              {loadingRescheduleSlots ? (
+                <div style={{ fontSize: 14, color: "#6b7280" }}>Loading available times…</div>
+              ) : rescheduleSlots.length === 0 ? (
+                <div style={{ fontSize: 14, color: "#6b7280" }}>
+                  No available times. (If you KNOW you have availability, your reschedule endpoint doesn’t match your
+                  /book endpoint — update <b>RESCHEDULE_SLOTS_ENDPOINT</b> at the top of this file.)
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {/* group by labelDate */}
+                  {Object.entries(
+                    rescheduleSlots.reduce((acc: Record<string, RescheduleSlot[]>, s) => {
+                      const k = s.labelDate ?? "Available";
+                      acc[k] = acc[k] || [];
+                      acc[k].push(s);
+                      return acc;
+                    }, {})
+                  ).map(([dateLabel, list]) => (
+                    <div
+                      key={dateLabel}
+                      style={{
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 12,
+                        padding: 12,
+                        background: "#f9fafb",
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, fontSize: 12, marginBottom: 8 }}>{dateLabel}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                        {list.map((slot) => {
+                          const isSelected = rescheduleStartISO === slot.startISO;
+                          return (
+                            <button
+                              key={slot.id}
+                              type="button"
+                              onClick={() => setRescheduleStartISO(slot.startISO)}
+                              style={{
+                                padding: "8px 12px",
+                                borderRadius: 999,
+                                border: "1px solid #d1d5db",
+                                background: isSelected ? "#111827" : "#fff",
+                                color: isSelected ? "#fff" : "#111827",
+                                fontWeight: 900,
+                                fontSize: 12,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {slot.labelTime ?? fmtDT(slot.startISO)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+              <button
+                type="button"
+                onClick={() => setRescheduleOpen(false)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  background: "#fff",
+                  color: "#111827",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
 
-      {/* Mobile Bottom Nav */}
-      <div className="mobileNav">
-        <button className={`navBtn ${tab === "players" ? "active" : ""}`} onClick={() => setTab("players")}>
-          <div className="navIcon">👤</div>
-          <div className="navLabel">Players</div>
-        </button>
-
-        <button className={`navBtn ${tab === "book" ? "active" : ""}`} onClick={() => setTab("book")}>
-          <div className="navIcon">📅</div>
-          <div className="navLabel">Book</div>
-        </button>
-
-        <button className={`navBtn ${tab === "upcoming" ? "active" : ""}`} onClick={() => setTab("upcoming")}>
-          <div className="navIcon">⏳</div>
-          <div className="navLabel">Upcoming</div>
-        </button>
-
-        <button className={`navBtn ${tab === "account" ? "active" : ""}`} onClick={() => setTab("account")}>
-          <div className="navIcon">⚙️</div>
-          <div className="navLabel">Account</div>
-        </button>
-      </div>
-
-      <style>{`
-        .mobileNav { display: none; }
-        @media (max-width: 820px) {
-          .mobileNav {
-            position: fixed;
-            left: 12px;
-            right: 12px;
-            bottom: 12px;
-            height: 66px;
-            border-radius: 18px;
-            border: 1px solid #e5e7eb;
-            background: rgba(255,255,255,0.92);
-            backdrop-filter: blur(10px);
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 6px;
-            padding: 8px;
-            box-shadow: 0 18px 40px rgba(15,23,42,0.18);
-            z-index: 9999;
-          }
-          .navBtn {
-            border: none;
-            background: transparent;
-            border-radius: 14px;
-            display: grid;
-            place-items: center;
-            gap: 2px;
-            padding: 6px 4px;
-            cursor: pointer;
-            color: #111827;
-            font-weight: 900;
-          }
-          .navBtn.active {
-            background: #111827;
-            color: #fff;
-          }
-          .navIcon { font-size: 18px; line-height: 1; }
-          .navLabel { font-size: 11px; line-height: 1; opacity: 0.9; }
-        }
-      `}</style>
+              <button
+                type="button"
+                onClick={submitReschedule}
+                disabled={rescheduling}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #111827",
+                  background: rescheduling ? "#9ca3af" : "#111827",
+                  color: "#fff",
+                  fontWeight: 900,
+                  cursor: rescheduling ? "not-allowed" : "pointer",
+                }}
+              >
+                {rescheduling ? "Saving..." : "Save New Time"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
