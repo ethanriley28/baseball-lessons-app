@@ -193,6 +193,14 @@ export default function DashboardTabsClient(props: {
         alert(`Failed to cancel lesson.${msg ? `\n\n${msg}` : ""}`);
         return;
       }
+      function goReschedule(bookingId: string, playerId: string) {
+  // sends parent to booking page in reschedule mode
+  const url = `/book?reschedule=${encodeURIComponent(bookingId)}&playerId=${encodeURIComponent(
+    playerId
+  )}`;
+  window.location.href = url;
+}
+
 
       // ✅ remove immediately
       setBookings((prev) => prev.filter((b) => b.id !== bookingId));
@@ -204,6 +212,72 @@ export default function DashboardTabsClient(props: {
       alert("Network error cancelling lesson.");
     }
   }
+
+    const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleBookingId, setRescheduleBookingId] = useState<string | null>(null);
+  const [reschedulePlayerLabel, setReschedulePlayerLabel] = useState<string>("");
+  const [rescheduleDate, setRescheduleDate] = useState<string>("");
+  const [rescheduleTime, setRescheduleTime] = useState<string>("");
+  const [rescheduling, setRescheduling] = useState(false);
+
+  function openReschedule(b: any) {
+    setRescheduleBookingId(b.id);
+    setReschedulePlayerLabel(`${b.player?.name ?? "Player"} · ${b.lessonType ?? "Lesson"}`);
+
+    // prefill with current booking local date/time
+    const d = new Date(b.startISO);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    setRescheduleDate(`${yyyy}-${mm}-${dd}`);
+    setRescheduleTime(`${hh}:${min}`);
+
+    setRescheduleOpen(true);
+  }
+
+  async function submitReschedule() {
+    if (!rescheduleBookingId) return;
+    if (!rescheduleDate || !rescheduleTime) {
+      alert("Pick a date and start time.");
+      return;
+    }
+
+    setRescheduling(true);
+    try {
+      // This creates a local Date in the user's timezone (good for UI),
+      // and we send the ISO to the server.
+      const newStartLocal = new Date(`${rescheduleDate}T${rescheduleTime}:00`);
+      const newStartISO = newStartLocal.toISOString();
+
+      const res = await fetch("/api/bookings/reschedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookingId: rescheduleBookingId,
+          newStartISO,
+        }),
+      });
+
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        alert(`Failed to reschedule.${msg ? `\n\n${msg}` : ""}`);
+        return;
+      }
+
+      // simplest + safest: reload so parent + coach stay consistent
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+      alert("Network error rescheduling lesson.");
+    } finally {
+      setRescheduling(false);
+      setRescheduleOpen(false);
+      setRescheduleBookingId(null);
+    }
+  }
+
 
   return (
     <main style={{ minHeight: "100vh", background: "#f6f7fb", padding: 24 }}>
@@ -449,6 +523,27 @@ export default function DashboardTabsClient(props: {
                         <b>Notes:</b> {b.notes}
                       </div>
                     ) : null}
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+  <button
+    type="button"
+    onClick={() => openReschedule(b)}
+    style={{
+      padding: "8px 12px",
+      borderRadius: 12,
+      border: "1px solid #111827",
+      background: "#fff",
+      color: "#111827",
+      fontWeight: 900,
+      cursor: "pointer",
+      width: "fit-content",
+    }}
+  >
+    Reschedule
+  </button>
+
+  {/* Keep your existing Cancel button (ONLY ONE) */}
+</div>
+
 
                     {!isCompleted ? (
                       <button
@@ -464,6 +559,7 @@ export default function DashboardTabsClient(props: {
                           cursor: "pointer",
                           width: "fit-content",
                         }}
+                        
                       >
                         Cancel
                       </button>
@@ -520,6 +616,112 @@ export default function DashboardTabsClient(props: {
           }
         }
       `}</style>
+      {/* Reschedule Modal */}
+{rescheduleOpen && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.35)",
+      display: "grid",
+      placeItems: "center",
+      zIndex: 9999,
+      padding: 16,
+    }}
+    onClick={() => setRescheduleOpen(false)}
+  >
+    <div
+      style={{
+        width: "min(520px, 100%)",
+        background: "#fff",
+        borderRadius: 18,
+        border: "1px solid #e5e7eb",
+        boxShadow: "0 24px 60px rgba(0,0,0,0.25)",
+        padding: 14,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ fontWeight: 900, fontSize: 16, color: "#111827" }}>
+        Reschedule Lesson
+      </div>
+      <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6, lineHeight: 1.35 }}>
+        {reschedulePlayerLabel}
+        <br />
+        Pick a new date/time that fits coach availability.
+      </div>
+
+      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Date</div>
+          <input
+            type="date"
+            value={rescheduleDate}
+            onChange={(e) => setRescheduleDate(e.target.value)}
+            style={{
+              border: "1px solid #d1d5db",
+              borderRadius: 12,
+              padding: "10px 12px",
+              fontSize: 16,
+              outline: "none",
+            }}
+          />
+        </div>
+
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Start Time</div>
+          <input
+            type="time"
+            value={rescheduleTime}
+            onChange={(e) => setRescheduleTime(e.target.value)}
+            style={{
+              border: "1px solid #d1d5db",
+              borderRadius: 12,
+              padding: "10px 12px",
+              fontSize: 16,
+              outline: "none",
+            }}
+          />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+        <button
+          type="button"
+          onClick={() => setRescheduleOpen(false)}
+          style={{
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid #e5e7eb",
+            background: "#fff",
+            color: "#111827",
+            fontWeight: 900,
+            cursor: "pointer",
+          }}
+        >
+          Close
+        </button>
+
+        <button
+          type="button"
+          onClick={submitReschedule}
+          disabled={rescheduling}
+          style={{
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid #111827",
+            background: rescheduling ? "#9ca3af" : "#111827",
+            color: "#fff",
+            fontWeight: 900,
+            cursor: rescheduling ? "not-allowed" : "pointer",
+          }}
+        >
+          {rescheduling ? "Saving..." : "Save New Time"}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
       {/* Mobile Bottom Nav */}
       <div className="mobileNav">
