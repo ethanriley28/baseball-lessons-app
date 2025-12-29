@@ -4,8 +4,6 @@ import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import SignOutButton from "@/components/SignOutButton";
-import { useRouter } from "next/navigation";
-
 
 type PlayerCard = {
   id: string;
@@ -29,20 +27,36 @@ type PlayerCard = {
   } | null;
 };
 
-type BookingRow = {
+type BookingRowInput = {
+  id: string;
+  startISO: string;
+  // these may or may not exist depending on what your server sends
+  endISO?: string;
+  lessonType: string | null;
+  durationMinutes: number | null;
+  notes: string | null;
+  player: { id: string; name: string };
+
+  completedAtISO?: string | null;
+  paidAtISO?: string | null;
+  paymentMethod?: string | null;
+  status?: string | null;
+};
+
+type BookingUI = {
   id: string;
   startISO: string;
   endISO: string;
   lessonType: string | null;
   durationMinutes: number | null;
   notes: string | null;
-  completedAtISO?: string | null;
-  paidAtISO?: string | null;
-  paymentMethod?: string | null;
-  status?: string | null;
   player: { id: string; name: string };
-};
 
+  completedAtISO: string | null;
+  paidAtISO: string | null;
+  paymentMethod: string | null;
+  status: string | null;
+};
 
 function pillStyle(active: boolean): React.CSSProperties {
   return {
@@ -100,28 +114,31 @@ function MetricMini({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Badge({ tone, children }: { tone: "green" | "red" | "blue" | "gray"; children: React.ReactNode }) {
-  const map: Record<string, { bg: string; fg: string; bd: string }> = {
-    green: { bg: "#ecfdf5", fg: "#065f46", bd: "#a7f3d0" },
-    red: { bg: "#fef2f2", fg: "#991b1b", bd: "#fecaca" },
-    blue: { bg: "#eff6ff", fg: "#1d4ed8", bd: "#bfdbfe" },
-    gray: { bg: "#f3f4f6", fg: "#374151", bd: "#e5e7eb" },
+function Badge({
+  children,
+  tone,
+}: {
+  children: React.ReactNode;
+  tone: "green" | "red" | "blue" | "gray";
+}) {
+  const styles: Record<string, React.CSSProperties> = {
+    green: { background: "#dcfce7", border: "1px solid #86efac", color: "#14532d" },
+    red: { background: "#fee2e2", border: "1px solid #fca5a5", color: "#7f1d1d" },
+    blue: { background: "#dbeafe", border: "1px solid #93c5fd", color: "#1e3a8a" },
+    gray: { background: "#f3f4f6", border: "1px solid #e5e7eb", color: "#111827" },
   };
-  const c = map[tone] ?? map.gray;
 
   return (
     <span
       style={{
+        padding: "6px 10px",
+        borderRadius: 999,
         fontSize: 12,
         fontWeight: 900,
-        padding: "6px 10px",
-        borderRadius: 9999,
-        background: c.bg,
-        color: c.fg,
-        border: `1px solid ${c.bd}`,
-        lineHeight: 1,
         display: "inline-flex",
         alignItems: "center",
+        lineHeight: 1,
+        ...styles[tone],
       }}
     >
       {children}
@@ -129,86 +146,128 @@ function Badge({ tone, children }: { tone: "green" | "red" | "blue" | "gray"; ch
   );
 }
 
-
+function computeEndISO(startISO: string, durationMinutes: number | null): string {
+  const start = new Date(startISO);
+  const mins = durationMinutes ?? 60;
+  const end = new Date(start.getTime() + mins * 60 * 1000);
+  return end.toISOString();
+}
 
 export default function DashboardTabsClient(props: {
   parentName: string;
   players: PlayerCard[];
-  upcomingBookings: BookingRow[];
+  upcomingBookings: BookingRowInput[];
 }) {
   const [tab, setTab] = useState<"players" | "book" | "upcoming" | "account">("players");
+  const [bookingView, setBookingView] = useState<"UPCOMING" | "COMPLETED" | "ALL">("UPCOMING");
+
   const searchParams = useSearchParams();
   const tabFromUrl = searchParams.get("tab");
 
   useEffect(() => {
     if (tabFromUrl === "upcoming") setTab("upcoming");
+    if (tabFromUrl === "players") setTab("players");
+    if (tabFromUrl === "book") setTab("book");
+    if (tabFromUrl === "account") setTab("account");
   }, [tabFromUrl]);
 
-  const nowMs = useMemo(() => Date.now(), []);
+  // ✅ Keep bookings in state so we can remove a cancelled booking instantly
+  const [bookings, setBookings] = useState<BookingUI[]>(() => {
+    return (props.upcomingBookings ?? []).map((b) => {
+      const endISO = b.endISO ?? computeEndISO(b.startISO, b.durationMinutes);
+      return {
+        id: b.id,
+        startISO: b.startISO,
+        endISO,
+        lessonType: b.lessonType ?? null,
+        durationMinutes: b.durationMinutes ?? null,
+        notes: b.notes ?? null,
+        player: { id: b.player.id, name: b.player.name },
+        completedAtISO: (b as any).completedAtISO ?? null,
+        paidAtISO: (b as any).paidAtISO ?? null,
+        paymentMethod: (b as any).paymentMethod ?? null,
+        status: (b as any).status ?? null,
+      };
+    });
+  });
 
-  const router = useRouter();
+  // If server sends new props (after navigation), update local state
+  useEffect(() => {
+    setBookings(
+      (props.upcomingBookings ?? []).map((b) => {
+        const endISO = b.endISO ?? computeEndISO(b.startISO, b.durationMinutes);
+        return {
+          id: b.id,
+          startISO: b.startISO,
+          endISO,
+          lessonType: b.lessonType ?? null,
+          durationMinutes: b.durationMinutes ?? null,
+          notes: b.notes ?? null,
+          player: { id: b.player.id, name: b.player.name },
+          completedAtISO: (b as any).completedAtISO ?? null,
+          paidAtISO: (b as any).paidAtISO ?? null,
+          paymentMethod: (b as any).paymentMethod ?? null,
+          status: (b as any).status ?? null,
+        };
+      })
+    );
+  }, [props.upcomingBookings]);
 
-const [bookings, setBookings] = useState<BookingRow[]>(props.upcomingBookings);
-
-useEffect(() => {
-  setBookings(props.upcomingBookings);
-}, [props.upcomingBookings]);
-
-
-const upcoming = useMemo(() => {
-  return [...bookings].sort(
-    (a, b) => new Date(a.startISO).getTime() - new Date(b.startISO).getTime()
-  );
-}, [bookings]);
-
-
-  const [bookingView, setBookingView] = useState<"UPCOMING" | "COMPLETED" | "ALL">("UPCOMING");
+  const upcomingSorted = useMemo(() => {
+    return [...bookings].sort(
+      (a, b) => new Date(a.startISO).getTime() - new Date(b.startISO).getTime()
+    );
+  }, [bookings]);
 
   const bookingsFiltered = useMemo(() => {
-  const all = [...bookings].sort(
-    (a, b) => new Date(a.startISO).getTime() - new Date(b.startISO).getTime()
-  );
+    const now = Date.now();
 
-  if (bookingView === "ALL") return all;
+    return upcomingSorted.filter((b) => {
+      // If you store "completedAtISO", use it; otherwise infer from end time
+      const isCompleted = Boolean(b.completedAtISO) || new Date(b.endISO).getTime() < now;
 
-  if (bookingView === "COMPLETED") {
-    return all.filter((b) => Boolean(b.completedAtISO));
-  }
+      // If you store cancelled in status, hide from UPCOMING/COMPLETED by default
+      const isCancelled = (b.status ?? "").toUpperCase() === "CANCELLED";
+      if (bookingView !== "ALL" && isCancelled) return false;
 
-  // UPCOMING
-  return all.filter((b) => !Boolean(b.completedAtISO));
-}, [bookings, bookingView]);
-
-async function cancelLesson(bookingId: string) {
-  const ok = confirm("Cancel this lesson? This cannot be undone.");
-  if (!ok) return;
-
-  try {
-    const res = await fetch("/api/booking/cancel", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bookingId }),
+      if (bookingView === "ALL") return true;
+      if (bookingView === "UPCOMING") return !isCompleted && !isCancelled;
+      if (bookingView === "COMPLETED") return isCompleted && !isCancelled;
+      return true;
     });
+  }, [upcomingSorted, bookingView]);
 
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      alert(`Failed to cancel lesson.\n\n${txt || "Unknown error"}`);
-      return;
+  async function cancelLesson(bookingId: string) {
+    const ok = window.confirm("Cancel this lesson?");
+    if (!ok) return;
+
+    try {
+      const res = await fetch("/api/bookings/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId }),
+      });
+
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        alert(`Failed to cancel lesson.${msg ? `\n\n${msg}` : ""}`);
+        return;
+      }
+
+      // ✅ remove it from the UI immediately
+      setBookings((prev) => prev.filter((b) => b.id !== bookingId));
+    } catch (e) {
+      console.error(e);
+      alert("Network error cancelling lesson.");
     }
-
-    // remove from UI immediately
-    setBookings((prev) => prev.filter((b) => b.id !== bookingId));
-  } catch (e) {
-    console.error(e);
-    alert("Network error cancelling lesson.");
   }
-}
 
   return (
-    <main style={{ minHeight: "100vh", background: "#f6f7fb", padding: 24 }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+    <main style={{ minHeight: "100vh", background: "#f6f7fb", padding: 24 }} id="parent-dashboard">
+      <div className="wrap" style={{ maxWidth: 1100, margin: "0 auto" }}>
         {/* Header */}
         <div
+          className="header"
           style={{
             display: "flex",
             justifyContent: "space-between",
@@ -225,7 +284,7 @@ async function cancelLesson(bookingId: string) {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <Link
               href="/book"
               style={{
@@ -239,14 +298,14 @@ async function cancelLesson(bookingId: string) {
                 display: "inline-block",
               }}
             >
-              Book a Lesson
+              + Book a Lesson
             </Link>
             <SignOutButton />
           </div>
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+        <div className="tabsRow" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
           <button style={pillStyle(tab === "players")} onClick={() => setTab("players")}>
             Players ({props.players.length})
           </button>
@@ -294,6 +353,7 @@ async function cancelLesson(bookingId: string) {
                     background: "#fff",
                     boxShadow: "0 10px 24px rgba(15,23,42,0.05)",
                     display: "block",
+                    minWidth: 0,
                   }}
                 >
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -309,6 +369,7 @@ async function cancelLesson(bookingId: string) {
                         alignItems: "center",
                         justifyContent: "center",
                         fontWeight: 900,
+                        flex: "0 0 auto",
                       }}
                     >
                       {p.photoUrl ? (
@@ -323,9 +384,9 @@ async function cancelLesson(bookingId: string) {
                       )}
                     </div>
 
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 900, fontSize: 16 }}>{p.name}</div>
-                      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 900, fontSize: 16, wordBreak: "break-word" }}>{p.name}</div>
+                      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2, wordBreak: "break-word" }}>
                         {(p.school ?? "—") +
                           " · " +
                           (p.classYear ?? "—") +
@@ -335,7 +396,10 @@ async function cancelLesson(bookingId: string) {
                   </div>
 
                   <div className="metricsRow" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                    <MetricMini label="Tee" value={p.metrics?.teeExitVelo != null ? `${p.metrics.teeExitVelo} mph` : "-"} />
+                    <MetricMini
+                      label="Tee"
+                      value={p.metrics?.teeExitVelo != null ? `${p.metrics.teeExitVelo} mph` : "-"}
+                    />
                     <MetricMini label="60" value={p.metrics?.sixtyTime != null ? `${p.metrics.sixtyTime}s` : "-"} />
                     <MetricMini
                       label="5-10-5"
@@ -348,7 +412,7 @@ async function cancelLesson(bookingId: string) {
 
             {props.players.length === 0 && (
               <div style={{ marginTop: 14, color: "#6b7280", fontSize: 14 }}>
-                No players yet. Click <b>+ Add Player</b> at the top to create your first profile.
+                No players yet. Use <b>Booking</b> or onboarding to add a player.
               </div>
             )}
           </section>
@@ -382,364 +446,116 @@ async function cancelLesson(bookingId: string) {
           </section>
         )}
 
-       {/* UPCOMING / HISTORY */}
-{tab === "upcoming" && (
-  <section style={cardStyle()}>
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-      <div>
-        <div style={{ fontSize: 18, fontWeight: 900 }}>Lessons</div>
-        <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
-          View upcoming lessons, completed lessons, and payment status.
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button style={pillStyle(bookingView === "UPCOMING")} onClick={() => setBookingView("UPCOMING")}>
-          Upcoming
-        </button>
-        <button style={pillStyle(bookingView === "COMPLETED")} onClick={() => setBookingView("COMPLETED")}>
-          Completed
-        </button>
-        <button style={pillStyle(bookingView === "ALL")} onClick={() => setBookingView("ALL")}>
-          All
-        </button>
-      </div>
-    </div>
-
-    {/* helpers (client-side) */}
-    {(() => {
-      function pad2(n: number) {
-        return String(n).padStart(2, "0");
-      }
-
-      function toICSDate(d: Date) {
-        // YYYYMMDDTHHMMSSZ
-        return (
-          d.getUTCFullYear() +
-          pad2(d.getUTCMonth() + 1) +
-          pad2(d.getUTCDate()) +
-          "T" +
-          pad2(d.getUTCHours()) +
-          pad2(d.getUTCMinutes()) +
-          pad2(d.getUTCSeconds()) +
-          "Z"
-        );
-      }
-
-      function downloadICS(opts: { title: string; startISO: string; endISO: string; description?: string }) {
-        const start = new Date(opts.startISO);
-        const end = new Date(opts.endISO);
-
-        const uid = `${Date.now()}-${Math.random().toString(16).slice(2)}@ethanrileytraining`;
-        const dtstamp = toICSDate(new Date());
-
-        const lines = [
-          "BEGIN:VCALENDAR",
-          "VERSION:2.0",
-          "PRODID:-//EthanRileyTraining//EN",
-          "CALSCALE:GREGORIAN",
-          "METHOD:PUBLISH",
-          "BEGIN:VEVENT",
-          `UID:${uid}`,
-          `DTSTAMP:${dtstamp}`,
-          `DTSTART:${toICSDate(start)}`,
-          `DTEND:${toICSDate(end)}`,
-          `SUMMARY:${(opts.title || "Lesson").replace(/\n/g, " ")}`,
-          `DESCRIPTION:${(opts.description || "").replace(/\n/g, " ")}`,
-          "END:VEVENT",
-          "END:VCALENDAR",
-        ];
-
-        const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "lesson.ics";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }
-
-       async function cancelLesson(bookingId: string) {
-  const ok = confirm("Cancel this lesson? This cannot be undone.");
-  if (!ok) return;
-
-  try {
-    const res = await fetch("/api/booking/cancel", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bookingId }),
-    });
-
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      alert(`Failed to cancel lesson.\n\n${txt || "Unknown error"}`);
-      return;
-    }
-
-    // ✅ easiest refresh
-    window.location.reload();
-  } catch (e) {
-    console.error(e);
-    alert("Failed to cancel lesson (network error).");
-  }
-}
-
-function rescheduleUrl(playerId: string) {
-  // sends them to booking page with the player pre-selected (you can use this param)
-  return `/book?playerId=${encodeURIComponent(playerId)}`;
-}
-
-
-
-      async function copyText(text: string) {
-        try {
-          await navigator.clipboard.writeText(text);
-          alert("Copied!");
-        } catch {
-          // fallback
-          const ta = document.createElement("textarea");
-          ta.value = text;
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand("copy");
-          ta.remove();
-          alert("Copied!");
-        }
-      }
-
-      return null;
-    })()}
-
-    <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-      {bookingsFiltered.map((b) => {
-        const isCompleted = Boolean(b.completedAtISO);
-        const isPaid = Boolean(b.paidAtISO);
-        
-
-        const isUpcoming = (() => {
-          try {
-            return new Date(b.startISO).getTime() > Date.now();
-          } catch {
-            return false;
-          }
-        })();
-        {!b.completedAtISO && (
-  <button
-    type="button"
-    onClick={() => cancelLesson(b.id)}
-    style={{
-      padding: "8px 12px",
-      borderRadius: 12,
-      border: "1px solid #ef4444",
-      background: "#fff",
-      color: "#ef4444",
-      fontWeight: 900,
-      cursor: "pointer",
-    }}
-  >
-    Cancel Lesson
-  </button>
-)}
-
-
-
-        const title = `${b.player.name} · ${b.lessonType ?? "Lesson"}`;
-        const details = `${title}\n${fmtDT(b.startISO)} → ${fmtDT(b.endISO)}${b.durationMinutes ? ` (${b.durationMinutes} min)` : ""}`;
-
-        return (
-          <div
-            key={b.id}
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 16,
-              padding: 14,
-              background: "#fff",
-              boxShadow: "0 10px 24px rgba(15,23,42,0.05)",
-              display: "grid",
-              gap: 8,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 900, color: "#111827" }}>
-                {b.player.name} · {b.lessonType ?? "Lesson"}
+        {/* UPCOMING / HISTORY */}
+        {tab === "upcoming" && (
+          <section style={cardStyle()}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 900 }}>Lessons</div>
+                <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
+                  View upcoming lessons, completed lessons, and payment status.
+                </div>
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Badge tone={isCompleted ? "green" : "blue"}>{isCompleted ? "Completed" : "Scheduled"}</Badge>
-                <Badge tone={isPaid ? "green" : "red"}>{isPaid ? "Paid" : "Unpaid"}</Badge>
-                {b.paymentMethod ? <Badge tone="gray">{b.paymentMethod}</Badge> : null}
+                <button style={pillStyle(bookingView === "UPCOMING")} onClick={() => setBookingView("UPCOMING")}>
+                  Upcoming
+                </button>
+                <button style={pillStyle(bookingView === "COMPLETED")} onClick={() => setBookingView("COMPLETED")}>
+                  Completed
+                </button>
+                <button style={pillStyle(bookingView === "ALL")} onClick={() => setBookingView("ALL")}>
+                  All
+                </button>
               </div>
             </div>
 
-            <div style={{ fontSize: 13, color: "#374151" }}>
-              <b>{fmtDT(b.startISO)}</b> → {fmtDT(b.endISO)}
-              {b.durationMinutes ? ` · ${b.durationMinutes} min` : null}
+            <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+              {bookingsFiltered.map((b) => {
+                const isCompleted = Boolean(b.completedAtISO) || new Date(b.endISO).getTime() < Date.now();
+                const isPaid = Boolean(b.paidAtISO);
+                const isCancelled = (b.status ?? "").toUpperCase() === "CANCELLED";
+
+                return (
+                  <div
+                    key={b.id}
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 16,
+                      padding: 14,
+                      background: "#fff",
+                      boxShadow: "0 10px 24px rgba(15,23,42,0.05)",
+                      display: "grid",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                      <div style={{ fontWeight: 900, color: "#111827" }}>
+                        {b.player.name} · {b.lessonType ?? "Lesson"}
+                      </div>
+
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {isCancelled ? (
+                          <Badge tone="red">Cancelled</Badge>
+                        ) : (
+                          <Badge tone={isCompleted ? "green" : "blue"}>{isCompleted ? "Completed" : "Scheduled"}</Badge>
+                        )}
+                        <Badge tone={isPaid ? "green" : "red"}>{isPaid ? "Paid" : "Unpaid"}</Badge>
+                        {b.paymentMethod ? <Badge tone="gray">{b.paymentMethod}</Badge> : null}
+                      </div>
+                    </div>
+
+                    <div style={{ fontSize: 13, color: "#374151" }}>
+                      <b>{fmtDT(b.startISO)}</b> → {fmtDT(b.endISO)}
+                      {b.durationMinutes ? ` · ${b.durationMinutes} min` : null}
+                    </div>
+
+                    {b.notes ? (
+                      <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.35 }}>
+                        <b>Notes:</b> {b.notes}
+                      </div>
+                    ) : null}
+
+                    {!isCancelled ? (
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+                        <button
+                          type="button"
+                          onClick={() => cancelLesson(b.id)}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 12,
+                            border: "1px solid #ef4444",
+                            background: "#fff",
+                            color: "#ef4444",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                            width: "fit-content",
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+
+              {bookingsFiltered.length === 0 ? (
+                <div style={{ fontSize: 14, color: "#6b7280" }}>No lessons found for this view.</div>
+              ) : null}
             </div>
-
-            {b.notes ? (
-              <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.35 }}>
-                <b>Notes:</b> {b.notes}
-              </div>
-            ) : null}
-            {b.notes ? (
-  <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.35 }}>
-    <b>Notes:</b> {b.notes}
-  </div>
-) : null}
-
-
-            {/* Actions (mainly for UPCOMING) */}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  // @ts-ignore (helpers are in the same component scope at runtime)
-                  downloadICS({
-                    title,
-                    startISO: b.startISO,
-                    endISO: b.endISO,
-                    description: b.notes ? `Notes: ${b.notes}` : "",
-                  });
-                }}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #e5e7eb",
-                  background: "#fff",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                Add to Calendar
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  // @ts-ignore
-                  copyText(details);
-                }}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #e5e7eb",
-                  background: "#fff",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                Copy details
-              </button>
-
-              <Link
-                href={`/player?id=${b.player.id}`}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #e5e7eb",
-                  background: "#fff",
-                  fontWeight: 900,
-                  textDecoration: "none",
-                  color: "#111827",
-                  display: "inline-block",
-                }}
-              >
-                View Player
-              </Link>
-
-              <Link
-                href="/book"
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #111827",
-                  background: isUpcoming ? "#111827" : "#fff",
-                  color: isUpcoming ? "#fff" : "#111827",
-                  fontWeight: 900,
-                  textDecoration: "none",
-                  display: "inline-block",
-                }}
-              >
-                Book again
-              </Link>
-              {isUpcoming && !isCompleted && (
-  <>
-    <button
-      type="button"
-      onClick={async () => {
-        if (!confirm("Cancel this lesson?")) return;
-
-        const res = await fetch("/api/booking/cancel", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bookingId: b.id }),
-        });
-
-        if (!res.ok) {
-          alert("Failed to cancel lesson.");
-          return;
-        }
-
-        location.reload();
-      }}
-      style={{
-        padding: "8px 12px",
-        borderRadius: 12,
-        border: "1px solid #ef4444",
-        background: "#fff",
-        color: "#ef4444",
-        fontWeight: 900,
-        cursor: "pointer",
-      }}
-    >
-      Cancel
-    </button>
-
-    <Link
-      href={`/book?reschedule=${b.id}`}
-      style={{
-        padding: "8px 12px",
-        borderRadius: 12,
-        border: "1px solid #2563eb",
-        background: "#fff",
-        color: "#2563eb",
-        fontWeight: 900,
-        textDecoration: "none",
-        display: "inline-block",
-      }}
-    >
-      Reschedule
-    </Link>
-  </>
-)}
-
-            </div>
-          </div>
-        );
-      })}
-      
-
-      {bookingsFiltered.length === 0 ? (
-        <div style={{ fontSize: 14, color: "#6b7280" }}>
-          No lessons found for this view.
-        </div>
-      ) : null}
-    </div>
-  </section>
-)}
-
-
+          </section>
+        )}
 
         {/* ACCOUNT */}
         {tab === "account" && (
           <section style={cardStyle()}>
             <div style={{ fontSize: 18, fontWeight: 900 }}>Account</div>
+            <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
+              Account settings can go here.
+            </div>
 
-            <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <div style={{ marginTop: 14 }}>
               <Link
                 href="/book"
                 style={{
@@ -764,9 +580,15 @@ function rescheduleUrl(playerId: string) {
         )}
       </div>
 
+      {/* ✅ Mobile-only fixes: desktop unchanged */}
       <style>{`
-        /* ✅ Mobile-only fixes: desktop unchanged */
         @media (max-width: 820px) {
+          .wrap {
+            padding: 0 6px;
+          }
+          #parent-dashboard {
+            padding: 14px !important;
+          }
           .playersGrid {
             grid-template-columns: 1fr !important;
           }
@@ -776,10 +598,86 @@ function rescheduleUrl(playerId: string) {
           .playerCard * {
             max-width: 100%;
           }
-          .metricsRow {
-            display: flex !important;
-            flex-wrap: wrap !important;
-            gap: 8px !important;
+        }
+      `}</style>
+
+      {/* Mobile Bottom Nav (only shows on small screens) */}
+      <div className="mobileNav">
+        <button className={`navBtn ${tab === "players" ? "active" : ""}`} onClick={() => setTab("players")}>
+          <div className="navIcon">👤</div>
+          <div className="navLabel">Players</div>
+        </button>
+
+        <button className={`navBtn ${tab === "book" ? "active" : ""}`} onClick={() => setTab("book")}>
+          <div className="navIcon">📅</div>
+          <div className="navLabel">Book</div>
+        </button>
+
+        <button className={`navBtn ${tab === "upcoming" ? "active" : ""}`} onClick={() => setTab("upcoming")}>
+          <div className="navIcon">⏳</div>
+          <div className="navLabel">Upcoming</div>
+        </button>
+
+        <button className={`navBtn ${tab === "account" ? "active" : ""}`} onClick={() => setTab("account")}>
+          <div className="navIcon">⚙️</div>
+          <div className="navLabel">Account</div>
+        </button>
+      </div>
+
+      <style>{`
+        .mobileNav { display: none; }
+
+        @media (max-width: 820px) {
+          .mobileNav {
+            position: fixed;
+            left: 12px;
+            right: 12px;
+            bottom: 12px;
+            height: 66px;
+            border-radius: 18px;
+            border: 1px solid #e5e7eb;
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(10px);
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+            padding: 8px;
+            box-shadow: 0 18px 40px rgba(15,23,42,0.18);
+            z-index: 9999;
+          }
+
+          .navBtn {
+            border: none;
+            background: transparent;
+            border-radius: 14px;
+            display: grid;
+            place-items: center;
+            gap: 2px;
+            padding: 6px 4px;
+            cursor: pointer;
+            color: #111827;
+            font-weight: 900;
+          }
+
+          .navBtn.active {
+            background: #111827;
+            color: #fff;
+          }
+
+          .navIcon {
+            font-size: 18px;
+            line-height: 1;
+          }
+
+          .navLabel {
+            font-size: 11px;
+            line-height: 1;
+            opacity: 0.9;
+          }
+
+          /* make room so content doesn't hide behind the mobile nav */
+          #parent-dashboard {
+            padding-bottom: 92px !important;
           }
         }
       `}</style>
