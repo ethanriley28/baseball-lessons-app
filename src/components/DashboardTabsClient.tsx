@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import SignOutButton from "@/components/SignOutButton";
 
 type PlayerCard = {
@@ -27,35 +27,20 @@ type PlayerCard = {
   } | null;
 };
 
-type BookingRowInput = {
+type BookingRow = {
   id: string;
   startISO: string;
-  // these may or may not exist depending on what your server sends
-  endISO?: string;
+  endISO?: string | null;
   lessonType: string | null;
   durationMinutes: number | null;
   notes: string | null;
   player: { id: string; name: string };
 
+  // optional fields (safe if not provided from server yet)
+  status?: string | null;
   completedAtISO?: string | null;
   paidAtISO?: string | null;
   paymentMethod?: string | null;
-  status?: string | null;
-};
-
-type BookingUI = {
-  id: string;
-  startISO: string;
-  endISO: string;
-  lessonType: string | null;
-  durationMinutes: number | null;
-  notes: string | null;
-  player: { id: string; name: string };
-
-  completedAtISO: string | null;
-  paidAtISO: string | null;
-  paymentMethod: string | null;
-  status: string | null;
 };
 
 function pillStyle(active: boolean): React.CSSProperties {
@@ -115,30 +100,30 @@ function MetricMini({ label, value }: { label: string; value: string }) {
 }
 
 function Badge({
-  children,
   tone,
+  children,
 }: {
+  tone: "green" | "blue" | "red" | "gray";
   children: React.ReactNode;
-  tone: "green" | "red" | "blue" | "gray";
 }) {
-  const styles: Record<string, React.CSSProperties> = {
-    green: { background: "#dcfce7", border: "1px solid #86efac", color: "#14532d" },
-    red: { background: "#fee2e2", border: "1px solid #fca5a5", color: "#7f1d1d" },
-    blue: { background: "#dbeafe", border: "1px solid #93c5fd", color: "#1e3a8a" },
-    gray: { background: "#f3f4f6", border: "1px solid #e5e7eb", color: "#111827" },
+  const map: Record<string, { bg: string; border: string; text: string }> = {
+    green: { bg: "#ecfdf5", border: "#a7f3d0", text: "#065f46" },
+    blue: { bg: "#eff6ff", border: "#bfdbfe", text: "#1d4ed8" },
+    red: { bg: "#fef2f2", border: "#fecaca", text: "#b91c1c" },
+    gray: { bg: "#f9fafb", border: "#e5e7eb", text: "#374151" },
   };
-
+  const t = map[tone];
   return (
     <span
       style={{
-        padding: "6px 10px",
-        borderRadius: 999,
-        fontSize: 12,
+        border: `1px solid ${t.border}`,
+        background: t.bg,
+        color: t.text,
         fontWeight: 900,
-        display: "inline-flex",
-        alignItems: "center",
-        lineHeight: 1,
-        ...styles[tone],
+        fontSize: 12,
+        padding: "6px 10px",
+        borderRadius: 9999,
+        whiteSpace: "nowrap",
       }}
     >
       {children}
@@ -146,100 +131,74 @@ function Badge({
   );
 }
 
-function computeEndISO(startISO: string, durationMinutes: number | null): string {
-  const start = new Date(startISO);
-  const mins = durationMinutes ?? 60;
-  const end = new Date(start.getTime() + mins * 60 * 1000);
-  return end.toISOString();
-}
-
 export default function DashboardTabsClient(props: {
   parentName: string;
   players: PlayerCard[];
-  upcomingBookings: BookingRowInput[];
+  upcomingBookings: BookingRow[];
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [tab, setTab] = useState<"players" | "book" | "upcoming" | "account">("players");
   const [bookingView, setBookingView] = useState<"UPCOMING" | "COMPLETED" | "ALL">("UPCOMING");
 
-  const searchParams = useSearchParams();
-  const tabFromUrl = searchParams.get("tab");
+  // ✅ IMPORTANT: keep local bookings state so cancel can remove instantly
+  const [bookings, setBookings] = useState<BookingRow[]>(props.upcomingBookings ?? []);
 
+  // keep bookings in sync if server data changes
   useEffect(() => {
-    if (tabFromUrl === "upcoming") setTab("upcoming");
-    if (tabFromUrl === "players") setTab("players");
-    if (tabFromUrl === "book") setTab("book");
-    if (tabFromUrl === "account") setTab("account");
-  }, [tabFromUrl]);
-
-  // ✅ Keep bookings in state so we can remove a cancelled booking instantly
-  const [bookings, setBookings] = useState<BookingUI[]>(() => {
-    return (props.upcomingBookings ?? []).map((b) => {
-      const endISO = b.endISO ?? computeEndISO(b.startISO, b.durationMinutes);
-      return {
-        id: b.id,
-        startISO: b.startISO,
-        endISO,
-        lessonType: b.lessonType ?? null,
-        durationMinutes: b.durationMinutes ?? null,
-        notes: b.notes ?? null,
-        player: { id: b.player.id, name: b.player.name },
-        completedAtISO: (b as any).completedAtISO ?? null,
-        paidAtISO: (b as any).paidAtISO ?? null,
-        paymentMethod: (b as any).paymentMethod ?? null,
-        status: (b as any).status ?? null,
-      };
-    });
-  });
-
-  // If server sends new props (after navigation), update local state
-  useEffect(() => {
-    setBookings(
-      (props.upcomingBookings ?? []).map((b) => {
-        const endISO = b.endISO ?? computeEndISO(b.startISO, b.durationMinutes);
-        return {
-          id: b.id,
-          startISO: b.startISO,
-          endISO,
-          lessonType: b.lessonType ?? null,
-          durationMinutes: b.durationMinutes ?? null,
-          notes: b.notes ?? null,
-          player: { id: b.player.id, name: b.player.name },
-          completedAtISO: (b as any).completedAtISO ?? null,
-          paidAtISO: (b as any).paidAtISO ?? null,
-          paymentMethod: (b as any).paymentMethod ?? null,
-          status: (b as any).status ?? null,
-        };
-      })
-    );
+    setBookings(props.upcomingBookings ?? []);
   }, [props.upcomingBookings]);
 
-  const upcomingSorted = useMemo(() => {
+  const tabFromUrl = searchParams.get("tab");
+  useEffect(() => {
+    if (tabFromUrl === "upcoming") setTab("upcoming");
+  }, [tabFromUrl]);
+
+  const bookingsSorted = useMemo(() => {
     return [...bookings].sort(
       (a, b) => new Date(a.startISO).getTime() - new Date(b.startISO).getTime()
     );
   }, [bookings]);
 
+  // ✅ Always hide cancelled in parent UI
+  const bookingsNotCancelled = useMemo(() => {
+    return bookingsSorted.filter((b) => (b.status ?? "CONFIRMED") !== "CANCELLED");
+  }, [bookingsSorted]);
+
   const bookingsFiltered = useMemo(() => {
     const now = Date.now();
 
-    return upcomingSorted.filter((b) => {
-      // If you store "completedAtISO", use it; otherwise infer from end time
-      const isCompleted = Boolean(b.completedAtISO) || new Date(b.endISO).getTime() < now;
+    // determine "completed" even if completedAtISO not provided (fallback to end time)
+    const withComputed = bookingsNotCancelled.map((b) => {
+      const startMs = new Date(b.startISO).getTime();
+      const endMs =
+        b.endISO != null
+          ? new Date(b.endISO).getTime()
+          : b.durationMinutes
+          ? startMs + b.durationMinutes * 60_000
+          : startMs;
 
-      // If you store cancelled in status, hide from UPCOMING/COMPLETED by default
-      const isCancelled = (b.status ?? "").toUpperCase() === "CANCELLED";
-      if (bookingView !== "ALL" && isCancelled) return false;
+      const computedCompleted =
+        Boolean(b.completedAtISO) || (endMs < now && (b.status ?? "CONFIRMED") !== "CANCELLED");
 
-      if (bookingView === "ALL") return true;
-      if (bookingView === "UPCOMING") return !isCompleted && !isCancelled;
-      if (bookingView === "COMPLETED") return isCompleted && !isCancelled;
-      return true;
+      return { b, endMs, computedCompleted };
     });
-  }, [upcomingSorted, bookingView]);
+
+    if (bookingView === "ALL") return withComputed.map((x) => x.b);
+
+    if (bookingView === "COMPLETED") return withComputed.filter((x) => x.computedCompleted).map((x) => x.b);
+
+    // UPCOMING
+    return withComputed.filter((x) => !x.computedCompleted).map((x) => x.b);
+  }, [bookingsNotCancelled, bookingView]);
 
   async function cancelLesson(bookingId: string) {
-    const ok = window.confirm("Cancel this lesson?");
+    const ok = confirm("Cancel this lesson?");
     if (!ok) return;
+
+    // optimistic remove
+    setBookings((prev) => prev.filter((b) => b.id !== bookingId));
 
     try {
       const res = await fetch("/api/bookings/cancel", {
@@ -249,25 +208,28 @@ export default function DashboardTabsClient(props: {
       });
 
       if (!res.ok) {
-        const msg = await res.text().catch(() => "");
-        alert(`Failed to cancel lesson.${msg ? `\n\n${msg}` : ""}`);
+        const txt = await res.text().catch(() => "");
+        alert(`Failed to cancel lesson.${txt ? `\n\n${txt}` : ""}`);
+
+        // rollback if failed
+        setBookings(props.upcomingBookings ?? []);
         return;
       }
 
-      // ✅ remove it from the UI immediately
-      setBookings((prev) => prev.filter((b) => b.id !== bookingId));
+      // keep server in sync
+      router.refresh();
     } catch (e) {
       console.error(e);
       alert("Network error cancelling lesson.");
+      setBookings(props.upcomingBookings ?? []);
     }
   }
 
   return (
-    <main style={{ minHeight: "100vh", background: "#f6f7fb", padding: 24 }} id="parent-dashboard">
-      <div className="wrap" style={{ maxWidth: 1100, margin: "0 auto" }}>
+    <main style={{ minHeight: "100vh", background: "#f6f7fb", padding: 24 }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         {/* Header */}
         <div
-          className="header"
           style={{
             display: "flex",
             justifyContent: "space-between",
@@ -284,7 +246,7 @@ export default function DashboardTabsClient(props: {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <Link
               href="/book"
               style={{
@@ -298,7 +260,7 @@ export default function DashboardTabsClient(props: {
                 display: "inline-block",
               }}
             >
-              + Book a Lesson
+              + Book Lesson
             </Link>
             <SignOutButton />
           </div>
@@ -353,7 +315,6 @@ export default function DashboardTabsClient(props: {
                     background: "#fff",
                     boxShadow: "0 10px 24px rgba(15,23,42,0.05)",
                     display: "block",
-                    minWidth: 0,
                   }}
                 >
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -369,7 +330,6 @@ export default function DashboardTabsClient(props: {
                         alignItems: "center",
                         justifyContent: "center",
                         fontWeight: 900,
-                        flex: "0 0 auto",
                       }}
                     >
                       {p.photoUrl ? (
@@ -384,9 +344,9 @@ export default function DashboardTabsClient(props: {
                       )}
                     </div>
 
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 900, fontSize: 16, wordBreak: "break-word" }}>{p.name}</div>
-                      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2, wordBreak: "break-word" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 900, fontSize: 16 }}>{p.name}</div>
+                      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
                         {(p.school ?? "—") +
                           " · " +
                           (p.classYear ?? "—") +
@@ -412,7 +372,7 @@ export default function DashboardTabsClient(props: {
 
             {props.players.length === 0 && (
               <div style={{ marginTop: 14, color: "#6b7280", fontSize: 14 }}>
-                No players yet. Use <b>Booking</b> or onboarding to add a player.
+                No players yet. Click <b>+ Book Lesson</b> at the top to get started.
               </div>
             )}
           </section>
@@ -472,9 +432,16 @@ export default function DashboardTabsClient(props: {
 
             <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
               {bookingsFiltered.map((b) => {
-                const isCompleted = Boolean(b.completedAtISO) || new Date(b.endISO).getTime() < Date.now();
+                const isCancelled = (b.status ?? "CONFIRMED") === "CANCELLED";
                 const isPaid = Boolean(b.paidAtISO);
-                const isCancelled = (b.status ?? "").toUpperCase() === "CANCELLED";
+                const isCompleted = Boolean(b.completedAtISO);
+
+                // end time fallback
+                const endISO =
+                  b.endISO ??
+                  (b.durationMinutes
+                    ? new Date(new Date(b.startISO).getTime() + b.durationMinutes * 60_000).toISOString()
+                    : b.startISO);
 
                 return (
                   <div
@@ -506,7 +473,7 @@ export default function DashboardTabsClient(props: {
                     </div>
 
                     <div style={{ fontSize: 13, color: "#374151" }}>
-                      <b>{fmtDT(b.startISO)}</b> → {fmtDT(b.endISO)}
+                      <b>{fmtDT(b.startISO)}</b> → {fmtDT(endISO)}
                       {b.durationMinutes ? ` · ${b.durationMinutes} min` : null}
                     </div>
 
@@ -516,7 +483,8 @@ export default function DashboardTabsClient(props: {
                       </div>
                     ) : null}
 
-                    {!isCancelled ? (
+                    {/* Actions */}
+                    {!isCancelled && !isCompleted ? (
                       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
                         <button
                           type="button"
@@ -534,6 +502,22 @@ export default function DashboardTabsClient(props: {
                         >
                           Cancel
                         </button>
+
+                        <Link
+                          href="/book"
+                          style={{
+                            textDecoration: "none",
+                            border: "1px solid #e5e7eb",
+                            background: "#fff",
+                            color: "#111827",
+                            fontWeight: 900,
+                            padding: "8px 12px",
+                            borderRadius: 12,
+                            display: "inline-block",
+                          }}
+                        >
+                          Reschedule
+                        </Link>
                       </div>
                     ) : null}
                   </div>
@@ -551,29 +535,7 @@ export default function DashboardTabsClient(props: {
         {tab === "account" && (
           <section style={cardStyle()}>
             <div style={{ fontSize: 18, fontWeight: 900 }}>Account</div>
-            <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
-              Account settings can go here.
-            </div>
-
-            <div style={{ marginTop: 14 }}>
-              <Link
-                href="/book"
-                style={{
-                  textDecoration: "none",
-                  border: "1px solid #e5e7eb",
-                  background: "#fff",
-                  color: "#111827",
-                  fontWeight: 900,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  display: "inline-block",
-                }}
-              >
-                Book a Lesson
-              </Link>
-            </div>
-
-            <div style={{ marginTop: 12, fontSize: 13, color: "#6b7280" }}>
+            <div style={{ marginTop: 10, fontSize: 13, color: "#6b7280" }}>
               More settings (password reset, notifications, etc.) can go here later.
             </div>
           </section>
@@ -583,12 +545,6 @@ export default function DashboardTabsClient(props: {
       {/* ✅ Mobile-only fixes: desktop unchanged */}
       <style>{`
         @media (max-width: 820px) {
-          .wrap {
-            padding: 0 6px;
-          }
-          #parent-dashboard {
-            padding: 14px !important;
-          }
           .playersGrid {
             grid-template-columns: 1fr !important;
           }
@@ -597,6 +553,11 @@ export default function DashboardTabsClient(props: {
           }
           .playerCard * {
             max-width: 100%;
+          }
+          .metricsRow {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 8px !important;
           }
         }
       `}</style>
@@ -628,6 +589,11 @@ export default function DashboardTabsClient(props: {
         .mobileNav { display: none; }
 
         @media (max-width: 820px) {
+          /* Give space so the bottom nav doesn't cover content */
+          main { padding-bottom: 96px !important; }
+
+          .tabsRow { display: none !important; }
+
           .mobileNav {
             position: fixed;
             left: 12px;
@@ -664,21 +630,8 @@ export default function DashboardTabsClient(props: {
             color: #fff;
           }
 
-          .navIcon {
-            font-size: 18px;
-            line-height: 1;
-          }
-
-          .navLabel {
-            font-size: 11px;
-            line-height: 1;
-            opacity: 0.9;
-          }
-
-          /* make room so content doesn't hide behind the mobile nav */
-          #parent-dashboard {
-            padding-bottom: 92px !important;
-          }
+          .navIcon { font-size: 18px; line-height: 1; }
+          .navLabel { font-size: 11px; line-height: 1; opacity: 0.9; }
         }
       `}</style>
     </main>

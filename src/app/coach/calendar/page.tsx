@@ -100,6 +100,11 @@ export default async function CoachCalendarPage({ searchParams }: PageProps) {
     where: { paidAt: { gte: weekStart, lt: weekEnd } },
     select: { durationMinutes: true },
   });
+  where: {
+  status: { not: "CANCELLED" },
+  // ...the rest of your filters
+}
+
 
   const weekPaidCount = weekPaid.length;
   const weekEarnings = weekPaid.reduce(
@@ -150,7 +155,7 @@ export default async function CoachCalendarPage({ searchParams }: PageProps) {
   }));
 
   return (
-    <main style={{ padding: 24, background: "#f3f4f6", minHeight: "100vh" }}>
+    <main style={{ padding: 24, background: "#f3f4f6", minHeight: "100vh", paddingBottom: 90 }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <header
           style={{
@@ -243,7 +248,6 @@ export default async function CoachCalendarPage({ searchParams }: PageProps) {
 </div>
 
         </header>
-
         <CoachCalendarClient
           monthISO={monthAnchor.toISOString()}
           bookings={calendarBookings}
