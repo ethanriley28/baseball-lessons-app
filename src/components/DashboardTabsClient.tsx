@@ -222,7 +222,7 @@ export default function DashboardTabsClient(props: {
   const [rescheduleSlots, setRescheduleSlots] = useState<
   { id: string; startISO: string; labelTime: string }[]
 >([]);
-const [rescheduleSelectedStartISO, setRescheduleSelectedStartISO] = useState<string>("");
+const [rescheduleStartISO, setRescheduleStartISO] = useState<string>("");
 const [loadingRescheduleSlots, setLoadingRescheduleSlots] = useState(false);
 
 
@@ -285,6 +285,7 @@ useEffect(() => {
     setRescheduleTime(`${hh}:${min}`);
 
     setRescheduleOpen(true);
+    setRescheduleStartISO("");
   }
 
   async function submitReschedule() {
@@ -302,6 +303,10 @@ await fetch("/api/bookings/reschedule", {
   }),
 });
 
+if (!rescheduleStartISO) {
+  alert("Pick an available time first.");
+  return;
+}
 
 const newStartISO = rescheduleStartISO;
 
@@ -746,27 +751,29 @@ const newStartISO = rescheduleStartISO;
   ) : (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
       {rescheduleSlots.map((s) => {
-        const selected = rescheduleSelectedStartISO === s.startISO;
-        return (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => setRescheduleSelectedStartISO(s.startISO)}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 999,
-              border: "1px solid #d1d5db",
-              background: selected ? "#111827" : "#fff",
-              color: selected ? "#fff" : "#111827",
-              fontWeight: 900,
-              fontSize: 12,
-              cursor: "pointer",
-            }}
-          >
-            {s.labelTime}
-          </button>
-        );
-      })}
+  const isSelected = rescheduleStartISO === s.startISO;
+
+  return (
+    <button
+      key={s.id}
+      type="button"
+      onClick={() => setRescheduleStartISO(s.startISO)}
+      style={{
+        padding: "8px 12px",
+        borderRadius: 999,
+        border: "1px solid #d1d5db",
+        background: isSelected ? "#111827" : "#fff",
+        color: isSelected ? "#fff" : "#111827",
+        fontWeight: 900,
+        fontSize: 12,
+        cursor: "pointer",
+      }}
+    >
+      {s.labelTime}
+    </button>
+  );
+})}
+
     </div>
   )}
 </div>
