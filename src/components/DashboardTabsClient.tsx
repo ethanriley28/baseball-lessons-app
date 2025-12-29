@@ -234,7 +234,7 @@ useEffect(() => {
     try {
       setLoadingRescheduleSlots(true);
       setRescheduleSlots([]);
-      setRescheduleSelectedStartISO("");
+      setRescheduleStartISO("");
 
       // ✅ Use the SAME endpoint your /book page uses
       // Replace this with the URL you found in DevTools Network.
@@ -289,7 +289,7 @@ useEffect(() => {
   }
 
   async function submitReschedule() {
-    if (!rescheduleSelectedStartISO) {
+    if (!rescheduleStartISO) {
   alert("Pick a time.");
   return;
 }
@@ -299,7 +299,7 @@ await fetch("/api/bookings/reschedule", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     bookingId: rescheduleBookingId,
-    newStartISO: rescheduleSelectedStartISO,
+    newStartISO: rescheduleStartISO,
   }),
 });
 
