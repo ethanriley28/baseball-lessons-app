@@ -222,41 +222,52 @@ export default function DashboardTabsClient(props: {
   const [rescheduleSlots, setRescheduleSlots] = useState<
   { id: string; startISO: string; labelTime: string }[]
 >([]);
-const [rescheduleSlotsLoading, setRescheduleSlotsLoading] = useState(false);
-const [rescheduleStartISO, setRescheduleStartISO] = useState<string | null>(null);
+const [rescheduleSelectedStartISO, setRescheduleSelectedStartISO] = useState<string>("");
+const [loadingRescheduleSlots, setLoadingRescheduleSlots] = useState(false);
+
 
 useEffect(() => {
-  if (!rescheduleOpen || !rescheduleDate) return;
-
-  async function loadAvailability() {
-    setRescheduleSlotsLoading(true);
-    setRescheduleSlots([]);
-    setRescheduleStartISO(null);
+  const run = async () => {
+    if (!rescheduleOpen) return;
+    if (!rescheduleDate) return;
 
     try {
-      const res = await fetch(
-        `/api/availability/day?date=${encodeURIComponent(rescheduleDate)}`
-      );
-      if (!res.ok) return;
+      setLoadingRescheduleSlots(true);
+      setRescheduleSlots([]);
+      setRescheduleSelectedStartISO("");
+
+      // ✅ Use the SAME endpoint your /book page uses
+      // Replace this with the URL you found in DevTools Network.
+      const url = `FETCH_URL_HERE`;
+
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        console.error("reschedule slots fetch failed", txt);
+        setRescheduleSlots([]);
+        return;
+      }
 
       const data = await res.json();
 
+      // Accept either { slots: [...] } or direct array
+      const slots = Array.isArray(data) ? data : data.slots;
+
       setRescheduleSlots(
-        data.slots.map((s: any) => ({
-          id: s.id,
+        (slots ?? []).map((s: any) => ({
+          id: s.id ?? s.startISO,
           startISO: s.startISO,
           labelTime: s.labelTime,
         }))
       );
-    } catch (e) {
-      console.error("Failed to load availability", e);
     } finally {
-      setRescheduleSlotsLoading(false);
+      setLoadingRescheduleSlots(false);
     }
-  }
+  };
 
-  loadAvailability();
+  run();
 }, [rescheduleOpen, rescheduleDate]);
+
 
 
   function openReschedule(b: any) {
@@ -277,11 +288,20 @@ useEffect(() => {
   }
 
   async function submitReschedule() {
-    if (!rescheduleStartISO) {
-  alert("Select a new available time.");
-  setRescheduling(false);
+    if (!rescheduleSelectedStartISO) {
+  alert("Pick a time.");
   return;
 }
+
+await fetch("/api/bookings/reschedule", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    bookingId: rescheduleBookingId,
+    newStartISO: rescheduleSelectedStartISO,
+  }),
+});
+
 
 const newStartISO = rescheduleStartISO;
 
@@ -710,29 +730,28 @@ const newStartISO = rescheduleStartISO;
         </div>
 
       {/* Available Slots */}
-<div style={{ display: "grid", gap: 6 }}>
+<div style={{ marginTop: 10 }}>
   <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>
     Available Times
   </div>
 
-  {rescheduleSlotsLoading ? (
-    <div style={{ fontSize: 13, color: "#6b7280" }}>
-      Loading coach availability…
+  {loadingRescheduleSlots ? (
+    <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
+      Loading times...
     </div>
   ) : rescheduleSlots.length === 0 ? (
-    <div style={{ fontSize: 13, color: "#6b7280" }}>
+    <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
       No available times for this date.
     </div>
   ) : (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-      {rescheduleSlots.map((slot) => {
-        const selected = rescheduleStartISO === slot.startISO;
-
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
+      {rescheduleSlots.map((s) => {
+        const selected = rescheduleSelectedStartISO === s.startISO;
         return (
           <button
-            key={slot.id}
+            key={s.id}
             type="button"
-            onClick={() => setRescheduleStartISO(slot.startISO)}
+            onClick={() => setRescheduleSelectedStartISO(s.startISO)}
             style={{
               padding: "8px 12px",
               borderRadius: 999,
@@ -744,13 +763,14 @@ const newStartISO = rescheduleStartISO;
               cursor: "pointer",
             }}
           >
-            {slot.labelTime}
+            {s.labelTime}
           </button>
         );
       })}
     </div>
   )}
 </div>
+
 
       </div>
 
