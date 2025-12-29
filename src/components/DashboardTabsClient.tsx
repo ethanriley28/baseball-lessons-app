@@ -219,6 +219,45 @@ export default function DashboardTabsClient(props: {
   const [rescheduleDate, setRescheduleDate] = useState<string>("");
   const [rescheduleTime, setRescheduleTime] = useState<string>("");
   const [rescheduling, setRescheduling] = useState(false);
+  const [rescheduleSlots, setRescheduleSlots] = useState<
+  { id: string; startISO: string; labelTime: string }[]
+>([]);
+const [rescheduleSlotsLoading, setRescheduleSlotsLoading] = useState(false);
+const [rescheduleStartISO, setRescheduleStartISO] = useState<string | null>(null);
+
+useEffect(() => {
+  if (!rescheduleOpen || !rescheduleDate) return;
+
+  async function loadAvailability() {
+    setRescheduleSlotsLoading(true);
+    setRescheduleSlots([]);
+    setRescheduleStartISO(null);
+
+    try {
+      const res = await fetch(
+        `/api/availability/day?date=${encodeURIComponent(rescheduleDate)}`
+      );
+      if (!res.ok) return;
+
+      const data = await res.json();
+
+      setRescheduleSlots(
+        data.slots.map((s: any) => ({
+          id: s.id,
+          startISO: s.startISO,
+          labelTime: s.labelTime,
+        }))
+      );
+    } catch (e) {
+      console.error("Failed to load availability", e);
+    } finally {
+      setRescheduleSlotsLoading(false);
+    }
+  }
+
+  loadAvailability();
+}, [rescheduleOpen, rescheduleDate]);
+
 
   function openReschedule(b: any) {
     setRescheduleBookingId(b.id);
@@ -238,11 +277,14 @@ export default function DashboardTabsClient(props: {
   }
 
   async function submitReschedule() {
-    if (!rescheduleBookingId) return;
-    if (!rescheduleDate || !rescheduleTime) {
-      alert("Pick a date and start time.");
-      return;
-    }
+    if (!rescheduleStartISO) {
+  alert("Select a new available time.");
+  setRescheduling(false);
+  return;
+}
+
+const newStartISO = rescheduleStartISO;
+
 
     setRescheduling(true);
     try {
@@ -667,21 +709,49 @@ export default function DashboardTabsClient(props: {
           />
         </div>
 
-        <div style={{ display: "grid", gap: 6 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Start Time</div>
-          <input
-            type="time"
-            value={rescheduleTime}
-            onChange={(e) => setRescheduleTime(e.target.value)}
+      {/* Available Slots */}
+<div style={{ display: "grid", gap: 6 }}>
+  <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>
+    Available Times
+  </div>
+
+  {rescheduleSlotsLoading ? (
+    <div style={{ fontSize: 13, color: "#6b7280" }}>
+      Loading coach availability…
+    </div>
+  ) : rescheduleSlots.length === 0 ? (
+    <div style={{ fontSize: 13, color: "#6b7280" }}>
+      No available times for this date.
+    </div>
+  ) : (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+      {rescheduleSlots.map((slot) => {
+        const selected = rescheduleStartISO === slot.startISO;
+
+        return (
+          <button
+            key={slot.id}
+            type="button"
+            onClick={() => setRescheduleStartISO(slot.startISO)}
             style={{
+              padding: "8px 12px",
+              borderRadius: 999,
               border: "1px solid #d1d5db",
-              borderRadius: 12,
-              padding: "10px 12px",
-              fontSize: 16,
-              outline: "none",
+              background: selected ? "#111827" : "#fff",
+              color: selected ? "#fff" : "#111827",
+              fontWeight: 900,
+              fontSize: 12,
+              cursor: "pointer",
             }}
-          />
-        </div>
+          >
+            {slot.labelTime}
+          </button>
+        );
+      })}
+    </div>
+  )}
+</div>
+
       </div>
 
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
