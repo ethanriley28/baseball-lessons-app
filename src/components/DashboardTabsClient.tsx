@@ -81,6 +81,27 @@ function fmtDT(iso: string) {
     minute: "2-digit",
   });
 }
+// 🔒 Coach timezone (must match coach calendar)
+const COACH_TZ = "America/Chicago";
+
+// Ensure ISO string is treated as UTC
+function ensureZ(iso: string) {
+  if (iso.endsWith("Z")) return iso;
+  if (/[+-]\d{2}:\d{2}$/.test(iso)) return iso;
+  return iso + "Z";
+}
+
+// Format time EXACTLY how coach calendar does
+function fmtTimeCoach(iso: string) {
+  const d = new Date(ensureZ(iso));
+  return d.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: COACH_TZ,
+  });
+}
+
+
 
 function MetricMini({ label, value }: { label: string; value: string }) {
   return (
@@ -736,7 +757,7 @@ export default function DashboardTabsClient(props: {
                             cursor: "pointer",
                           }}
                         >
-                          {s.labelTime}
+                          {fmtTimeCoach(s.startISO)}
                         </button>
                       );
                     })}
