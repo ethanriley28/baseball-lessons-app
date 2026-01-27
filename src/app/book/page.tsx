@@ -5,6 +5,8 @@ import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import BookClient from "./BookClient";
+import { sendEmail } from "@/lib/email";
+
 
 type Slot = {
   id: string;
@@ -222,7 +224,7 @@ async function createBooking(formData: FormData) {
   });
   if (conflict) return;
 
-  await prisma.booking.create({
+    const booking = await prisma.booking.create({
     data: {
       playerId,
       parentId,
@@ -232,7 +234,27 @@ async function createBooking(formData: FormData) {
       durationMinutes,
       lessonType,
     },
+    include: {
+      player: true,
+      parent: true,
+    },
   });
+  // 📧 Email notifications (Parent + Coach)
+  await sendEmail({
+    to: [
+      booking.parent.email!,
+      process.env.COACH_EMAIL!,
+    ],
+    subject: "Lesson Booked",
+    html: `
+      <h2>Lesson Confirmed</h2>
+      <p><b>Player:</b> ${booking.player.name}</p>
+      <p><b>Lesson:</b> ${lessonType}</p>
+      <p><b>Date & Time:</b> ${start.toLocaleString()}</p>
+      <p>Thanks for booking! See you soon.</p>
+    `,
+  });
+
 
   revalidatePath("/dashboard");
   revalidatePath("/coach/calendar");
