@@ -224,36 +224,33 @@ async function createBooking(formData: FormData) {
   });
   if (conflict) return;
 
-    const booking = await prisma.booking.create({
-    data: {
-      playerId,
-      parentId,
-      start,
-      end,
-      status: "CONFIRMED",
-      durationMinutes,
-      lessonType,
-    },
-    include: {
-      player: true,
-      parent: true,
-    },
-  });
-  // 📧 Email notifications (Parent + Coach)
-  await sendEmail({
-    to: [
-      booking.parent.email!,
-      process.env.COACH_EMAIL!,
-    ],
-    subject: "Lesson Booked",
-    html: `
-      <h2>Lesson Confirmed</h2>
-      <p><b>Player:</b> ${booking.player.name}</p>
-      <p><b>Lesson:</b> ${lessonType}</p>
-      <p><b>Date & Time:</b> ${start.toLocaleString()}</p>
-      <p>Thanks for booking! See you soon.</p>
-    `,
-  });
+    await prisma.booking.create({
+  data: {
+    playerId,
+    parentId,
+    start,
+    end,
+    status: "CONFIRMED",
+    durationMinutes,
+    lessonType,
+  },
+});
+
+// 📧 EMAIL PARENT
+await sendEmail({
+  to: session.user.email!,
+  subject: "Lesson Confirmed",
+  html: `
+    <h2>Lesson Confirmed</h2>
+    <p>Your lesson has been booked.</p>
+    <p>
+      <b>Player:</b> ${lessonType}<br/>
+      <b>Date:</b> ${start.toLocaleDateString()}<br/>
+      <b>Time:</b> ${start.toLocaleTimeString()}
+    </p>
+  `,
+});
+
 
 
   revalidatePath("/dashboard");
